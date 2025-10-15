@@ -1,0 +1,27 @@
+### Mock REST quick checks
+POST http://localhost:8000/search
+Content-Type: application/json
+
+{
+  "classes": ["standing_instruction","autopayment","service_link"],
+  "filters": {"status":["active"], "customer_id":["C123"]},
+  "limit": 200
+}
+
+### Only autopayments for C789
+POST http://localhost:8000/search
+Content-Type: application/json
+
+{
+  "classes": ["autopayment"],
+  "filters": {"status":["active"], "customer_id":["C789"]}
+}
+
+### Insurance links for C456
+POST http://localhost:8000/search
+Content-Type: application/json
+
+{
+  "classes": ["service_link"],
+  "filters": {"status":["active"], "customer_id":["C456"], "service_type":["insurance"]}
+}
