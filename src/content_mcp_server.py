@@ -1,56 +1,47 @@
 """
-Content MCP Server (Python) — Render.com Deployment Ready
+Content MCP Server - Model Context Protocol Implementation
 
-This version runs a FastAPI-based REST API that mimics an MCP-compatible service.
-It exposes:
-  • POST /search  — search and filter in-memory content items
-  • GET /health   — simple health check for Render
+This is a proper MCP server that communicates via JSON-RPC over stdio.
+It provides content search functionality as MCP tools.
 
-You can deploy this directly to Render as a **Web Service**.
+Installation:
+pip install mcp
 
----
-# Local Run
-pip install -U fastapi uvicorn aiohttp pydantic
+Usage:
 python content_mcp_server.py
 
-Then open http://localhost:10000/health to verify.
-
----
-# Render Deployment Steps
-1. Push this repo to GitHub.
-2. Go to [https://render.com](https://render.com) → **New +** → **Web Service**.
-3. Connect to your repo.
-4. Set:
-   - **Environment:** Python 3.x
-   - **Build Command:** `pip install -r requirements.txt`
-   - **Start Command:** `python content_mcp_server.py`
-5. Add env vars (optional):
-   - `PORT` → `10000` (Render automatically injects its own `$PORT`, this code respects it)
-   - `CONTENT_NO_AUTH=true`
-6. Deploy → open the Render URL → test `/health` and `/search` endpoints.
-
----
-# Example query to /search
-POST /search
-{
-  "classes": ["standing_instruction","autopayment","service_link"],
-  "filters": {"status": ["active"], "customer_id": ["C123"]}
-}
+The server will communicate via stdin/stdout using JSON-RPC protocol.
 """
 
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-from typing import List, Dict, Optional
-import os
-
-app = FastAPI(title="Content MCP Server Demo")
+import asyncio
+import json
+import sys
+from typing import Any, Dict, List, Optional
+from mcp.server import Server
+from mcp.server.stdio import stdio_server
+from mcp.types import (
+    CallToolRequest,
+    CallToolResult,
+    ListToolsRequest,
+    TextContent,
+    Tool,
+)
 
 # ---------------- Data model ----------------
-class ContentItem(BaseModel):
-    id: str
-    cls: str
-    text: str
-    indexes: Dict[str, str]
+class ContentItem:
+    def __init__(self, id: str, cls: str, text: str, indexes: Dict[str, str]):
+        self.id = id
+        self.cls = cls
+        self.text = text
+        self.indexes = indexes
+    
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "cls": self.cls,
+            "text": self.text,
+            "indexes": self.indexes
+        }
 
 # Example dataset
 DATA = [
@@ -61,35 +52,89 @@ DATA = [
     ContentItem(id="ap-260", cls="autopayment", text="$55.00 to GymPro on the 1st monthly from Credit ****7676.", indexes={"status":"active","customer_id":"C789"}),
 ]
 
-# ---------------- Request schema ----------------
-class SearchBody(BaseModel):
-    classes: List[str]
-    filters: Dict[str, List[str]] = {}
-    limit: Optional[int] = 50
+# ---------------- MCP Server ----------------
+app = Server("content-mcp-server")
 
-# ---------------- API routes ----------------
-@app.get("/health")
-def health():
-    return {"status": "ok", "message": "Content MCP Server is running"}
+@app.list_tools()
+async def handle_list_tools() -> list[Tool]:
+    """List available tools."""
+    return [
+        Tool(
+            name="search_content",
+            description="Search and filter content items by class and attributes",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "classes": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Content classes to search (standing_instruction, autopayment, service_link)"
+                    },
+                    "filters": {
+                        "type": "object",
+                        "description": "Key-value filters to apply",
+                        "additionalProperties": {
+                            "type": "array",
+                            "items": {"type": "string"}
+                        }
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum number of results to return",
+                        "default": 50
+                    }
+                },
+                "required": ["classes"]
+            }
+        )
+    ]
 
-@app.post("/search")
-def search_content(body: SearchBody):
+@app.call_tool()
+async def handle_call_tool(name: str, arguments: dict) -> list[TextContent]:
+    """Handle tool calls."""
+    if name != "search_content":
+        raise ValueError(f"Unknown tool: {name}")
+    
+    classes = arguments.get("classes", [])
+    filters = arguments.get("filters", {})
+    limit = arguments.get("limit", 50)
+    
     results = []
     for item in DATA:
-        if body.classes and item.cls not in body.classes:
+        if classes and item.cls not in classes:
             continue
+        
         match = True
-        for key, vals in body.filters.items():
+        for key, vals in filters.items():
             if key not in item.indexes or item.indexes[key] not in vals:
                 match = False
                 break
+        
         if match:
             results.append(item)
-        if body.limit and len(results) >= body.limit:
+        
+        if limit and len(results) >= limit:
             break
-    return results
+    
+    # Format results as JSON string
+    result_data = [item.to_dict() for item in results]
+    result_text = json.dumps(result_data, indent=2)
+    
+    return [
+        TextContent(
+            type="text",
+            text=f"Found {len(results)} content items:\n\n{result_text}"
+        )
+    ]
+
+async def main():
+    """Run the MCP server."""
+    async with stdio_server() as (read_stream, write_stream):
+        await app.run(
+            read_stream,
+            write_stream,
+            app.create_initialization_options()
+        )
 
 if __name__ == "__main__":
-    import uvicorn
-    port = int(os.getenv("PORT", 10000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    asyncio.run(main())
