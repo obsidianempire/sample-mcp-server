@@ -4,28 +4,17 @@ Content MCP Server - Model Context Protocol Implementation
 This is a proper MCP server that communicates via JSON-RPC over stdio.
 It provides content search functionality as MCP tools.
 
-Installation:
-pip install mcp
-
 Usage:
 python content_mcp_server.py
 
 The server will communicate via stdin/stdout using JSON-RPC protocol.
+No external dependencies required - uses only Python standard library.
 """
 
 import asyncio
 import json
 import sys
 from typing import Any, Dict, List, Optional
-from mcp.server import Server
-from mcp.server.stdio import stdio_server
-from mcp.types import (
-    CallToolRequest,
-    CallToolResult,
-    ListToolsRequest,
-    TextContent,
-    Tool,
-)
 
 # ---------------- Data model ----------------
 class ContentItem:
@@ -53,88 +42,176 @@ DATA = [
 ]
 
 # ---------------- MCP Server ----------------
-app = Server("content-mcp-server")
-
-@app.list_tools()
-async def handle_list_tools() -> list[Tool]:
-    """List available tools."""
-    return [
-        Tool(
-            name="search_content",
-            description="Search and filter content items by class and attributes",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "classes": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Content classes to search (standing_instruction, autopayment, service_link)"
-                    },
-                    "filters": {
-                        "type": "object",
-                        "description": "Key-value filters to apply",
-                        "additionalProperties": {
-                            "type": "array",
-                            "items": {"type": "string"}
-                        }
-                    },
-                    "limit": {
-                        "type": "integer",
-                        "description": "Maximum number of results to return",
-                        "default": 50
-                    }
-                },
-                "required": ["classes"]
-            }
-        )
-    ]
-
-@app.call_tool()
-async def handle_call_tool(name: str, arguments: dict) -> list[TextContent]:
-    """Handle tool calls."""
-    if name != "search_content":
-        raise ValueError(f"Unknown tool: {name}")
+class MCPServer:
+    def __init__(self, name: str):
+        self.name = name
+        self.tools = []
     
-    classes = arguments.get("classes", [])
-    filters = arguments.get("filters", {})
-    limit = arguments.get("limit", 50)
+    def add_tool(self, name: str, description: str, input_schema: dict):
+        """Add a tool to the server."""
+        self.tools.append({
+            "name": name,
+            "description": description,
+            "inputSchema": input_schema
+        })
     
-    results = []
-    for item in DATA:
-        if classes and item.cls not in classes:
-            continue
+    async def handle_request(self, request: dict) -> dict:
+        """Handle incoming JSON-RPC requests."""
+        method = request.get("method")
+        params = request.get("params", {})
+        request_id = request.get("id")
         
-        match = True
-        for key, vals in filters.items():
-            if key not in item.indexes or item.indexes[key] not in vals:
-                match = False
+        try:
+            if method == "initialize":
+                result = {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {
+                        "tools": {}
+                    },
+                    "serverInfo": {
+                        "name": self.name,
+                        "version": "0.1.0"
+                    }
+                }
+            elif method == "tools/list":
+                result = {"tools": self.tools}
+            elif method == "tools/call":
+                tool_name = params.get("name")
+                arguments = params.get("arguments", {})
+                result = await self.call_tool(tool_name, arguments)
+            else:
+                return {
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "error": {
+                        "code": -32601,
+                        "message": f"Method not found: {method}"
+                    }
+                }
+            
+            return {
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "result": result
+            }
+        
+        except Exception as e:
+            return {
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "error": {
+                    "code": -32603,
+                    "message": f"Internal error: {str(e)}"
+                }
+            }
+    
+    async def call_tool(self, name: str, arguments: dict) -> dict:
+        """Handle tool calls."""
+        if name != "search_content":
+            raise ValueError(f"Unknown tool: {name}")
+        
+        classes = arguments.get("classes", [])
+        filters = arguments.get("filters", {})
+        limit = arguments.get("limit", 50)
+        
+        results = []
+        for item in DATA:
+            if classes and item.cls not in classes:
+                continue
+            
+            match = True
+            for key, vals in filters.items():
+                if key not in item.indexes or item.indexes[key] not in vals:
+                    match = False
+                    break
+            
+            if match:
+                results.append(item)
+            
+            if limit and len(results) >= limit:
                 break
         
-        if match:
-            results.append(item)
+        # Format results as JSON string
+        result_data = [item.to_dict() for item in results]
+        result_text = json.dumps(result_data, indent=2)
         
-        if limit and len(results) >= limit:
-            break
-    
-    # Format results as JSON string
-    result_data = [item.to_dict() for item in results]
-    result_text = json.dumps(result_data, indent=2)
-    
-    return [
-        TextContent(
-            type="text",
-            text=f"Found {len(results)} content items:\n\n{result_text}"
-        )
-    ]
+        return {
+            "content": [
+                {
+                    "type": "text",
+                    "text": f"Found {len(results)} content items:\n\n{result_text}"
+                }
+            ]
+        }
+
+# Initialize server
+server = MCPServer("content-mcp-server")
+
+# Add search tool
+server.add_tool(
+    name="search_content",
+    description="Search and filter content items by class and attributes",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "classes": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Content classes to search (standing_instruction, autopayment, service_link)"
+            },
+            "filters": {
+                "type": "object",
+                "description": "Key-value filters to apply",
+                "additionalProperties": {
+                    "type": "array",
+                    "items": {"type": "string"}
+                }
+            },
+            "limit": {
+                "type": "integer",
+                "description": "Maximum number of results to return",
+                "default": 50
+            }
+        },
+        "required": ["classes"]
+    }
+)
 
 async def main():
     """Run the MCP server."""
-    async with stdio_server() as (read_stream, write_stream):
-        await app.run(
-            read_stream,
-            write_stream,
-            app.create_initialization_options()
-        )
+    while True:
+        try:
+            # Read JSON-RPC request from stdin
+            line = await asyncio.get_event_loop().run_in_executor(None, sys.stdin.readline)
+            if not line:
+                break
+            
+            request = json.loads(line.strip())
+            response = await server.handle_request(request)
+            
+            # Write JSON-RPC response to stdout
+            print(json.dumps(response), flush=True)
+        
+        except json.JSONDecodeError:
+            error_response = {
+                "jsonrpc": "2.0",
+                "id": None,
+                "error": {
+                    "code": -32700,
+                    "message": "Parse error"
+                }
+            }
+            print(json.dumps(error_response), flush=True)
+        except Exception as e:
+            error_response = {
+                "jsonrpc": "2.0",
+                "id": None,
+                "error": {
+                    "code": -32603,
+                    "message": f"Internal error: {str(e)}"
+                }
+            }
+            print(json.dumps(error_response), flush=True)
 
 if __name__ == "__main__":
     asyncio.run(main())
