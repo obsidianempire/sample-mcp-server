@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: content-mcp-server
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python src/content_mcp_server.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: PORT
+        value: 10000

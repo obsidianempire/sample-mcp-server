@@ -1,6 +1,6 @@
-mcp
+mcp-server>=0.1.0
 aiohttp
-fastapi
-uvicorn
+fastapi>=0.104.0
+uvicorn>=0.24.0
 pydantic
 uvloop; platform_system != "Windows"

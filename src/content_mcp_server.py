@@ -1,19 +1,21 @@
 """
 Content MCP Server - Model Context Protocol Implementation
 
-This is a proper MCP server that communicates via JSON-RPC over stdio.
-It provides content search functionality as MCP tools.
+This server supports two modes:
+1. MCP mode: JSON-RPC over stdio (default)
+2. HTTP mode: REST API for Render deployment (when PORT env var is set)
 
-Usage:
+For MCP usage:
 python content_mcp_server.py
 
-The server will communicate via stdin/stdout using JSON-RPC protocol.
-No external dependencies required - uses only Python standard library.
+For Render deployment:
+PORT=10000 python content_mcp_server.py
 """
 
 import asyncio
 import json
 import sys
+import os
 from typing import Any, Dict, List, Optional
 
 # ---------------- Data model ----------------
@@ -177,41 +179,77 @@ server.add_tool(
     }
 )
 
-async def main():
-    """Run the MCP server."""
-    while True:
-        try:
-            # Read JSON-RPC request from stdin
-            line = await asyncio.get_event_loop().run_in_executor(None, sys.stdin.readline)
-            if not line:
-                break
-            
-            request = json.loads(line.strip())
-            response = await server.handle_request(request)
-            
-            # Write JSON-RPC response to stdout
-            print(json.dumps(response), flush=True)
-        
-        except json.JSONDecodeError:
-            error_response = {
-                "jsonrpc": "2.0",
-                "id": None,
-                "error": {
-                    "code": -32700,
-                    "message": "Parse error"
-                }
-            }
-            print(json.dumps(error_response), flush=True)
-        except Exception as e:
-            error_response = {
-                "jsonrpc": "2.0",
-                "id": None,
-                "error": {
-                    "code": -32603,
-                    "message": f"Internal error: {str(e)}"
-                }
-            }
-            print(json.dumps(error_response), flush=True)
+# Check if running in HTTP mode (Render deployment)
+if os.getenv("PORT"):
+    # HTTP mode for Render
+    from fastapi import FastAPI, HTTPException
+    from pydantic import BaseModel
+    import uvicorn
+    
+    app = FastAPI(title="Content MCP Server - HTTP Mode")
+    
+    class SearchRequest(BaseModel):
+        classes: List[str]
+        filters: Dict[str, List[str]] = {}
+        limit: Optional[int] = 50
+    
+    @app.get("/health")
+    def health():
+        return {"status": "ok", "message": "Content MCP Server is running in HTTP mode"}
+    
+    @app.post("/tools/call")
+    async def call_tool_http(request: SearchRequest):
+        """HTTP endpoint that mimics MCP tool calling."""
+        arguments = request.dict()
+        result = await server.call_tool("search_content", arguments)
+        return result
+    
+    @app.get("/tools/list")
+    def list_tools_http():
+        """HTTP endpoint to list available tools."""
+        return {"tools": server.tools}
+    
+    if __name__ == "__main__":
+        port = int(os.getenv("PORT", 10000))
+        uvicorn.run(app, host="0.0.0.0", port=port)
 
-if __name__ == "__main__":
-    asyncio.run(main())
+else:
+    # MCP mode (stdio)
+    async def main():
+        """Run the MCP server."""
+        while True:
+            try:
+                # Read JSON-RPC request from stdin
+                line = await asyncio.get_event_loop().run_in_executor(None, sys.stdin.readline)
+                if not line:
+                    break
+                
+                request = json.loads(line.strip())
+                response = await server.handle_request(request)
+                
+                # Write JSON-RPC response to stdout
+                print(json.dumps(response), flush=True)
+            
+            except json.JSONDecodeError:
+                error_response = {
+                    "jsonrpc": "2.0",
+                    "id": None,
+                    "error": {
+                        "code": -32700,
+                        "message": "Parse error"
+                    }
+                }
+                print(json.dumps(error_response), flush=True)
+            except Exception as e:
+                error_response = {
+                    "jsonrpc": "2.0",
+                    "id": None,
+                    "error": {
+                        "code": -32603,
+                        "message": f"Internal error: {str(e)}"
+                    }
+                }
+                print(json.dumps(error_response), flush=True)
+
+    if __name__ == "__main__":
+        asyncio.run(main())
