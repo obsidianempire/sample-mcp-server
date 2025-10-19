@@ -369,10 +369,99 @@ if os.getenv("PORT") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
             "capabilities": ["mcp", "rest-api", "salesforce-integration"]
         }
     
-    # AgentForce-specific endpoints
+    # OpenAPI schema endpoint for Salesforce External Service registration
     @app.get("/api/v1/actions")
+    def get_openapi_schema():
+        """Return OpenAPI schema for Salesforce External Service registration."""
+        return {
+            "openapi": "3.0.0",
+            "info": {
+                "title": "Content MCP Service",
+                "description": "Banking content search service",
+                "version": "1.0.0"
+            },
+            "servers": [
+                {
+                    "url": "https://your-render-app.onrender.com/api/v1",
+                    "description": "Production server"
+                }
+            ],
+            "paths": {
+                "/actions/search_content": {
+                    "post": {
+                        "summary": "Search Content Items",
+                        "description": "Search and filter banking content items like standing instructions, autopayments, and service links",
+                        "operationId": "searchContent",
+                        "requestBody": {
+                            "required": True,
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "classes": {
+                                                "type": "string",
+                                                "description": "Comma-separated content classes: standing_instruction, autopayment, service_link"
+                                            },
+                                            "status": {
+                                                "type": "string",
+                                                "description": "Filter by status: active, closed"
+                                            },
+                                            "customer_id": {
+                                                "type": "string",
+                                                "description": "Filter by customer ID (e.g., C123)"
+                                            }
+                                        },
+                                        "required": ["classes"]
+                                    }
+                                }
+                            }
+                        },
+                        "responses": {
+                            "200": {
+                                "description": "Successful response",
+                                "content": {
+                                    "application/json": {
+                                        "schema": {
+                                            "type": "object",
+                                            "properties": {
+                                                "success": {
+                                                    "type": "boolean"
+                                                },
+                                                "result": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "items": {
+                                                            "type": "array",
+                                                            "items": {
+                                                                "type": "object",
+                                                                "properties": {
+                                                                    "id": {"type": "string"},
+                                                                    "cls": {"type": "string"},
+                                                                    "text": {"type": "string"},
+                                                                    "indexes": {"type": "object"}
+                                                                }
+                                                            }
+                                                        },
+                                                        "summary": {"type": "string"},
+                                                        "metadata": {"type": "object"}
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+    # Alternative endpoint for AgentForce action discovery (keep this too)
+    @app.get("/api/v1/agentforce/actions")
     def list_actions_agentforce():
-        """List available actions for AgentForce agents."""
+        """List available actions for AgentForce agents (alternative endpoint)."""
         return {
             "actions": [
                 {
@@ -403,15 +492,16 @@ if os.getenv("PORT") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
                 }
             ]
         }
-    
+
     @app.post("/api/v1/actions/search_content")
-    async def execute_search_agentforce(
-        classes: str,
-        status: str = None,
-        customer_id: str = None,
-        limit: int = 50
-    ):
-        """Execute search action for AgentForce agents."""
+    async def execute_search_agentforce_json(request: dict):
+        """Execute search action with JSON body for better Salesforce integration."""
+        
+        # Extract parameters from JSON body
+        classes = request.get("classes", "")
+        status = request.get("status")
+        customer_id = request.get("customer_id")
+        limit = request.get("limit", 50)
         
         # Parse and execute search
         class_list = [c.strip() for c in classes.split(",")]

@@ -46,43 +46,49 @@ Setup → Security → Named Credentials → Legacy → New
 Setup → Integrations → External Services → New External Service
 ```
 
-**Method 1: From Endpoint**
+**Updated Method: Use OpenAPI Schema**
 - **Service Name**: `ContentMCPService`
-- **Endpoint URL**: `https://your-render-app.onrender.com/api/v1/actions`
+- **Service Schema**: Select **"Relative URL"**
+- **Relative URL**: `/api/v1/actions`
 - **Named Credential**: Select `ContentMCPServer`
-- Click **Next** → Salesforce will auto-generate the service
+- Click **Next** 
 
-**Method 2: Manual OpenAPI Schema**
-If auto-generation fails, create this schema:
+If you get the MCP error, try this alternative:
+
+**Alternative Method: Manual Schema Entry**
+- **Service Schema**: Select **"Schema"**
+- Paste this OpenAPI schema:
 
 ```yaml
 openapi: 3.0.0
 info:
   title: Content MCP Service
+  description: Banking content search service
   version: 1.0.0
-servers:
-  - url: https://your-render-app.onrender.com/api/v1
 paths:
   /actions/search_content:
     post:
       summary: Search Content Items
-      parameters:
-        - name: classes
-          in: query
-          required: true
-          schema:
-            type: string
-          description: Comma-separated content classes
-        - name: status
-          in: query
-          schema:
-            type: string
-          description: Filter by status (active, closed)
-        - name: customer_id
-          in: query
-          schema:
-            type: string
-          description: Filter by customer ID
+      description: Search and filter banking content items
+      operationId: searchContent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                classes:
+                  type: string
+                  description: Comma-separated content classes
+                status:
+                  type: string
+                  description: Filter by status (active, closed)
+                customer_id:
+                  type: string
+                  description: Filter by customer ID
+              required:
+                - classes
       responses:
         '200':
           description: Successful response
@@ -90,7 +96,15 @@ paths:
             application/json:
               schema:
                 type: object
+                properties:
+                  success:
+                    type: boolean
+                  result:
+                    type: object
 ```
+
+**Troubleshooting the MCP Error:**
+The error occurs because Salesforce expects an OpenAPI schema, not a custom JSON format. The updated endpoint now returns proper OpenAPI format.
 
 ## Step 3: Create AgentForce Agent
 
