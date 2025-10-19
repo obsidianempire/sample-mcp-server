@@ -179,14 +179,25 @@ server.add_tool(
     }
 )
 
-# Check if running in HTTP mode (Render deployment)
-if os.getenv("PORT"):
-    # HTTP mode for Render
-    from fastapi import FastAPI, HTTPException
+# Check if running in HTTP mode (AWS/Render deployment)
+if os.getenv("PORT") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
+    # HTTP mode for cloud deployment
+    from fastapi import FastAPI, HTTPException, Header
+    from fastapi.responses import HTMLResponse
+    from fastapi.middleware.cors import CORSMiddleware
     from pydantic import BaseModel
     import uvicorn
     
     app = FastAPI(title="Content MCP Server - HTTP Mode")
+    
+    # Add CORS for Salesforce integration
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],  # More permissive for testing, restrict in production
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
     
     class SearchRequest(BaseModel):
         classes: List[str]
@@ -209,6 +220,238 @@ if os.getenv("PORT"):
         """HTTP endpoint to list available tools."""
         return {"tools": server.tools}
     
+    @app.get("/", response_class=HTMLResponse)
+    def test_interface():
+        """Simple web interface to test the server."""
+        return """
+        <!DOCTYPE html>
+        <html>
+        <head><title>Content MCP Server Test</title></head>
+        <body>
+            <h1>Content MCP Server Test Interface</h1>
+            
+            <h2>Test Search Tool</h2>
+            <form id="searchForm">
+                <label>Classes (comma-separated):</label><br>
+                <input type="text" id="classes" value="standing_instruction,autopayment,service_link" style="width:400px"><br><br>
+                
+                <label>Status Filter:</label><br>
+                <select id="status">
+                    <option value="">All</option>
+                    <option value="active">Active</option>
+                    <option value="closed">Closed</option>
+                </select><br><br>
+                
+                <label>Customer ID Filter:</label><br>
+                <input type="text" id="customer_id" placeholder="e.g., C123"><br><br>
+                
+                <button type="submit">Search</button>
+            </form>
+            
+            <h3>Result:</h3>
+            <pre id="result"></pre>
+            
+            <script>
+                document.getElementById('searchForm').onsubmit = async (e) => {
+                    e.preventDefault();
+                    
+                    const classes = document.getElementById('classes').value.split(',').map(s => s.trim());
+                    const filters = {};
+                    
+                    const status = document.getElementById('status').value;
+                    if (status) filters.status = [status];
+                    
+                    const customerId = document.getElementById('customer_id').value;
+                    if (customerId) filters.customer_id = [customerId];
+                    
+                    try {
+                        const response = await fetch('/tools/call', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({classes, filters, limit: 50})
+                        });
+                        
+                        const result = await response.json();
+                        document.getElementById('result').textContent = JSON.stringify(result, null, 2);
+                    } catch (error) {
+                        document.getElementById('result').textContent = 'Error: ' + error.message;
+                    }
+                };
+            </script>
+        </body>
+        </html>
+        """
+    
+    # Salesforce-compatible REST API
+    @app.get("/api/v1/content")
+    async def search_content_salesforce(
+        classes: str = "standing_instruction,autopayment,service_link",
+        status: str = None,
+        customer_id: str = None,
+        limit: int = 50,
+        authorization: str = Header(None, alias="Authorization")
+    ):
+        """Salesforce-compatible REST endpoint for content search."""
+        
+        # Simple API key validation (optional for demo)
+        # if authorization != "Bearer your-api-key":
+        #     raise HTTPException(status_code=401, detail="Unauthorized")
+        
+        # Parse parameters
+        class_list = [c.strip() for c in classes.split(",")]
+        filters = {}
+        if status:
+            filters["status"] = [status]
+        if customer_id:
+            filters["customer_id"] = [customer_id]
+        
+        # Call the MCP tool logic
+        arguments = {"classes": class_list, "filters": filters, "limit": limit}
+        mcp_result = await server.call_tool("search_content", arguments)
+        
+        # Transform MCP result to Salesforce-friendly format
+        content_text = mcp_result["content"][0]["text"]
+        # Extract JSON from the text response
+        json_start = content_text.find("[\n")
+        if json_start != -1:
+            json_data = content_text[json_start:]
+            items = json.loads(json_data)
+        else:
+            items = []
+        
+        return {
+            "success": True,
+            "count": len(items),
+            "data": items,
+            "metadata": {
+                "classes_searched": class_list,
+                "filters_applied": filters,
+                "limit": limit
+            }
+        }
+    
+    @app.post("/api/v1/content/search")
+    async def search_content_salesforce_post(
+        request: SearchRequest,
+        authorization: str = Header(None, alias="Authorization")
+    ):
+        """POST version for complex Salesforce queries."""
+        
+        # Simple API key validation (optional for demo)
+        # if authorization != "Bearer your-api-key":
+        #     raise HTTPException(status_code=401, detail="Unauthorized")
+        
+        arguments = request.dict()
+        mcp_result = await server.call_tool("search_content", arguments)
+        
+        # Transform to Salesforce format
+        content_text = mcp_result["content"][0]["text"]
+        json_start = content_text.find("[\n")
+        if json_start != -1:
+            json_data = content_text[json_start:]
+            items = json.loads(json_data)
+        else:
+            items = []
+        
+        return {
+            "success": True,
+            "count": len(items),
+            "data": items
+        }
+    
+    # Health check for AWS/Salesforce
+    @app.get("/api/health")
+    def health_check():
+        return {
+            "status": "healthy",
+            "service": "content-mcp-server",
+            "version": "0.1.0",
+            "capabilities": ["mcp", "rest-api", "salesforce-integration"]
+        }
+    
+    # AgentForce-specific endpoints
+    @app.get("/api/v1/actions")
+    def list_actions_agentforce():
+        """List available actions for AgentForce agents."""
+        return {
+            "actions": [
+                {
+                    "name": "search_content",
+                    "displayName": "Search Content Items", 
+                    "description": "Search and filter banking content items like standing instructions, autopayments, and service links",
+                    "parameters": [
+                        {
+                            "name": "classes",
+                            "type": "string",
+                            "required": True,
+                            "description": "Comma-separated content classes: standing_instruction, autopayment, service_link"
+                        },
+                        {
+                            "name": "status", 
+                            "type": "string",
+                            "required": False,
+                            "description": "Filter by status: active, closed"
+                        },
+                        {
+                            "name": "customer_id",
+                            "type": "string", 
+                            "required": False,
+                            "description": "Filter by customer ID (e.g., C123)"
+                        }
+                    ],
+                    "returnType": "object"
+                }
+            ]
+        }
+    
+    @app.post("/api/v1/actions/search_content")
+    async def execute_search_agentforce(
+        classes: str,
+        status: str = None,
+        customer_id: str = None,
+        limit: int = 50
+    ):
+        """Execute search action for AgentForce agents."""
+        
+        # Parse and execute search
+        class_list = [c.strip() for c in classes.split(",")]
+        filters = {}
+        if status:
+            filters["status"] = [status]
+        if customer_id:
+            filters["customer_id"] = [customer_id]
+        
+        arguments = {"classes": class_list, "filters": filters, "limit": limit}
+        mcp_result = await server.call_tool("search_content", arguments)
+        
+        # AgentForce-friendly response format
+        content_text = mcp_result["content"][0]["text"]
+        json_start = content_text.find("[\n")
+        if json_start != -1:
+            json_data = content_text[json_start:]
+            items = json.loads(json_data)
+        else:
+            items = []
+        
+        return {
+            "success": True,
+            "result": {
+                "items": items,
+                "summary": f"Found {len(items)} items matching criteria",
+                "metadata": {
+                    "searched_classes": class_list,
+                    "applied_filters": filters,
+                    "total_results": len(items)
+                }
+            },
+            "agentContext": {
+                "nextSuggestedActions": [
+                    "refine_search" if len(items) > 10 else "create_report",
+                    "export_results" if len(items) > 0 else "try_different_criteria"
+                ]
+            }
+        }
+
     if __name__ == "__main__":
         port = int(os.getenv("PORT", 10000))
         uvicorn.run(app, host="0.0.0.0", port=port)
