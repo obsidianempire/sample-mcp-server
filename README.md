@@ -1,86 +1,238 @@
-# MCP Content PoC
+# Sample MCP Server with Salesforce AgentForce Integration
 
-A minimal **Model Context Protocol (MCP)** server exposing a `content.search` tool that lets an Agent (e.g., **Salesforce Agentforce**) fetch text content by **classes** and **index filters**.
+A Model Context Protocol (MCP) server designed for integration with Salesforce AgentForce to provide intelligent banking service assistance. The server supports both HTTP REST API mode (for Salesforce) and MCP protocol mode (for compatible clients).
 
-It supports two backends:
-- **REST-backed** (`RestContentRepository`) that POSTs to your `/search` endpoint.
-- **In-memory demo** with realistic seed data (no external dependencies).
+## Features
 
-Also included: an optional **FastAPI mock** `/search` server so you can demo different results driven by filters.
+- **Salesforce AgentForce Integration**: External Service compatible HTTP endpoints
+- **Banking Data Search**: Standing instructions, autopayments, and service links
+- **Natural Language Queries**: AgentForce converts conversation to structured data
+- **Web Test Interface**: Built-in testing and debugging tools
+- **MCP Protocol Support**: Compatible with MCP clients when needed
 
-## Quick Start (VS Code)
+## Quick Start
 
-1. **Create a venv & install deps**
+### Prerequisites
+
+- Python 3.8+
+- pip package manager
+- Salesforce Developer Edition org (for AgentForce integration)
+- Render account (for cloud deployment)
+
+### Local Development
+
+1. **Clone the repository**:
    ```bash
-   cd mcp-content-poc
-   python -m venv .venv
-   # Activate the venv (Windows PowerShell):
-   .venv\Scripts\Activate.ps1
-   # macOS/Linux:
-   # source .venv/bin/activate
-   pip install -r requirements.txt
-   cp .env.example .env
+   git clone <repository-url>
+   cd sample-mcp-server
    ```
 
-2. **Option A: In-memory only (no REST)**  
-   Make sure `CONTENT_API_BASE_URL` is **unset** in `.env`.
+2. **Install dependencies**:
+   ```bash
+   pip install -r requirements.txt
+   ```
 
+3. **Run as HTTP server** (for Salesforce integration):
+   ```bash
+   PORT=10000 python src/content_mcp_server.py
+   ```
+   Then visit: http://localhost:10000
+
+4. **Run as MCP server** (for MCP clients only):
    ```bash
    python src/content_mcp_server.py
    ```
-   Connect from your MCP-capable client via **stdio** (Agentforce or local MCP client).
 
-3. **Option B: Run the mock REST & then the MCP server**
-   Open **two terminals** in VS Code:
-   - Terminal A (mock REST):
-     ```bash
-     uvicorn src.content_mcp_server:build_mock_api(repo) --factory --host 0.0.0.0 --port 8000
-     ```
-   - Terminal B (MCP, pointing to mock):
-     ```bash
-     set -a; source .env 2>/dev/null || true; set +a   # (bash/zsh only; on Windows use 'setx' or edit env manually)
-     export CONTENT_API_BASE_URL=http://localhost:8000
-     export CONTENT_NO_AUTH=true
-     python src/content_mcp_server.py
-     ```
+### Cloud Deployment (Render)
 
-4. **VS Code debug**  
-   Use the provided **Run and Debug** configurations:
-   - *Run MCP Server (stdio)* — launches the MCP server.
-   - *Run Mock REST (FastAPI)* — launches the mock `/search` API.
+1. **Connect your GitHub repository to Render**
+2. **Create a new Web Service**
+3. **Configure build settings**:
+   - Build Command: `pip install -r requirements.txt`
+   - Start Command: `python src/content_mcp_server.py`
+4. **Deploy and get your public URL**
 
-## Tool Contract
+### Salesforce AgentForce Setup
 
-### `content.search` → returns concatenated text blob
-Input JSON:
-```json
-{
-  "classes": ["standing_instruction","autopayment","service_link"],
-  "filters": {
-    "status": ["active","current"],
-    "customer_id": ["C123"]
-  },
-  "limit": 200,
-  "join_with": "\n---\n"
-}
+Follow the comprehensive setup guide: [docs/salesforce-agentforce-setup.md](docs/salesforce-agentforce-setup.md)
+
+**Quick setup summary**:
+1. Create Named Credential pointing to your Render URL
+2. Create External Service using `/api/v1/actions` endpoint
+3. Create AgentForce agent with banking assistant template
+4. Add topics and link to External Service actions
+5. Test with sample queries
+
+## API Endpoints
+
+### HTTP REST API (Primary Usage)
+
+- `GET /health` - Health check
+- `GET /` - Interactive test interface
+- `POST /tools/call` - MCP-style tool calling
+- `GET /tools/list` - List available tools
+
+### Salesforce External Service Endpoints
+
+- `GET /api/v1/actions` - OpenAPI schema for External Service registration
+- `POST /api/v1/actions/search_content` - Main search endpoint for AgentForce
+- `GET /api/v1/content` - REST-style search (GET parameters)
+- `POST /api/v1/content/search` - REST-style search (POST body)
+- `GET /api/health` - Service health for monitoring
+
+### MCP Protocol (Optional)
+Standard MCP JSON-RPC over stdin/stdout when run without PORT environment variable (for MCP client compatibility).
+
+## Sample Data
+
+The server includes sample banking data for demonstration:
+
+- **Customer C123**: 3 services (autopayment, standing instruction, service link)
+- **Customer C456**: 1 closed service (Roth IRA)
+- **Customer C789**: 1 autopayment (GymPro)
+
+### Service Types
+
+- **standing_instruction**: Recurring transfers between accounts
+- **autopayment**: Scheduled payments to external companies
+- **service_link**: Connected external financial services
+
+## Usage Examples
+
+### Test Queries for AgentForce
+
+```
+"Show me autopayments for customer C123"
+"Find all services for customer C123"
+"What standing instructions exist for customer C123?"
+"Show me closed services for customer C456"
+"Find services for customer C999" (no results)
 ```
 
-### `content.search_ids` → returns `id\tclass\tsnippet` per line
+### Direct API Calls
 
-## Example scripted tests (Agent → tool args)
-- All active for C123:
-```json
-{"classes":["standing_instruction","autopayment","service_link"],"filters":{"status":["active"],"customer_id":["C123"]}}
-```
-- Only autopayments for C789:
-```json
-{"classes":["autopayment"],"filters":{"status":["active"],"customer_id":["C789"]}}
-```
-- Insurance links for C456 (exclude closed):
-```json
-{"classes":["service_link"],"filters":{"status":["active"],"customer_id":["C456"],"service_type":["insurance"]}}
+```bash
+# Test the search endpoint
+curl -X POST https://your-app.onrender.com/api/v1/actions/search_content \
+  -H "Content-Type: application/json" \
+  -d '{"classes": "autopayment", "customer_id": "C123"}'
+
+# Health check
+curl https://your-app.onrender.com/health
 ```
 
-## Notes
-- The MCP server uses **stdio transport** by default.
-- For PoC, set `CONTENT_NO_AUTH=true` to send **no** Authorization header.
+## Project Structure
+
+```
+sample-mcp-server/
+├── src/
+│   └── content_mcp_server.py    # Main server (MCP + HTTP)
+├── docs/
+│   ├── salesforce-agentforce-setup.md  # Complete setup guide
+│   ├── demo-guide.md                   # Demo instructions
+│   └── demo-assets.md                  # Demo support materials
+├── requirements.txt             # Python dependencies
+├── render.yaml                 # Render deployment config
+└── README.md                  # This file
+```
+
+## Architecture
+
+```
+Customer Query → AgentForce → External Service → MCP Server → Banking Data
+              ←             ←                  ←            ←
+```
+
+1. **Customer asks natural language questions in AgentForce**
+2. **AgentForce interprets intent and extracts parameters**
+3. **External Service calls MCP server via HTTP with structured data**
+4. **MCP server searches banking data and returns results**
+5. **AgentForce presents results in customer-friendly language**
+
+## Development
+
+### Testing
+
+- **HTTP testing**: Use the built-in web interface at `/`
+- **Salesforce testing**: Use External Service test function
+- **AgentForce testing**: Use Preview mode in Agent Builder
+- **MCP client testing**: Use Claude Desktop or compatible MCP client (optional)
+
+## Demo Instructions
+
+See [docs/demo-guide.md](docs/demo-guide.md) for complete demo instructions including:
+- Setup checklist
+- Demo script with sample queries
+- Troubleshooting common issues
+- Audience-specific variations
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Agent doesn't respond**:
+   - Check if agent is active in Salesforce
+   - Verify MCP server is running (`/health` endpoint)
+   - Test External Service independently
+
+2. **External Service not found**:
+   - Ensure Named Credential is configured correctly
+   - Verify External Service points to correct URL
+   - Check OpenAPI schema is valid
+
+3. **Wrong responses**:
+   - Verify topic action configuration in AgentForce
+   - Check parameter mapping in action setup
+   - Test MCP server directly with curl
+
+### Debug Mode
+
+Enable debug logging by setting environment variables:
+```bash
+DEBUG=true python src/content_mcp_server.py
+```
+
+## Production Considerations
+
+### Security
+- Add API key authentication for production
+- Implement rate limiting
+- Use HTTPS for all external communications
+- Audit log all banking data access
+
+### Performance
+- Add caching for frequently accessed data
+- Implement connection pooling for databases
+- Monitor response times and set up alerting
+- Scale horizontally with load balancers
+
+### Compliance
+- Implement proper audit trails
+- Add data retention policies
+- Ensure GDPR/privacy compliance
+- Regular security assessments
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests for new functionality
+5. Update documentation
+6. Submit a pull request
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Support
+
+- **Issues**: Report bugs and feature requests via GitHub Issues
+- **Documentation**: Complete setup guide in [docs/](docs/) folder
+- **Demo Support**: Use [docs/demo-guide.md](docs/demo-guide.md) for presentations
+
+## Related Links
+
+- [Model Context Protocol Specification](https://modelcontextprotocol.io/)
+- [Salesforce AgentForce Documentation](https://help.salesforce.com/s/articleView?id=sf.agentforce.htm)
+- [External Services Developer Guide](https://developer.salesforce.com/docs/atlas.en-us.apexcode.meta/apexcode/apex_external_services.htm)

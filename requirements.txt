@@ -1,6 +1,6 @@
 mcp-server>=0.1.0
-aiohttp
-fastapi>=0.104.0
-uvicorn>=0.24.0
-pydantic
+fastmcp>=0.2.0
+pydantic>=2.0.0
+uvicorn>=0.20.0
+uvloop; platform_system != "Windows"
 uvloop; platform_system != "Windows"

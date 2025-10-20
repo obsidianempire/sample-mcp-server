@@ -1,38 +1,28 @@
 """
-Content MCP Server - Model Context Protocol Implementation
+Content MCP Server - Using FastMCP for simplified implementation
 
-This server supports two modes:
-1. MCP mode: JSON-RPC over stdio (default)
-2. HTTP mode: REST API for Render deployment (when PORT env var is set)
+This server uses FastMCP to handle MCP protocol and provides HTTP mode for Salesforce AgentForce integration.
 
-For MCP usage:
+For MCP usage with compatible clients:
 python content_mcp_server.py
 
-For Render deployment:
+For Salesforce AgentForce integration (recommended):
 PORT=10000 python content_mcp_server.py
 """
 
-import asyncio
 import json
-import sys
 import os
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
+
+from fastmcp import FastMCP
+from pydantic import BaseModel
 
 # ---------------- Data model ----------------
-class ContentItem:
-    def __init__(self, id: str, cls: str, text: str, indexes: Dict[str, str]):
-        self.id = id
-        self.cls = cls
-        self.text = text
-        self.indexes = indexes
-    
-    def to_dict(self):
-        return {
-            "id": self.id,
-            "cls": self.cls,
-            "text": self.text,
-            "indexes": self.indexes
-        }
+class ContentItem(BaseModel):
+    id: str
+    cls: str
+    text: str
+    indexes: Dict[str, str]
 
 # Example dataset
 DATA = [
@@ -43,152 +33,64 @@ DATA = [
     ContentItem(id="ap-260", cls="autopayment", text="$55.00 to GymPro on the 1st monthly from Credit ****7676.", indexes={"status":"active","customer_id":"C789"}),
 ]
 
-# ---------------- MCP Server ----------------
-class MCPServer:
-    def __init__(self, name: str):
-        self.name = name
-        self.tools = []
+# Initialize FastMCP server
+mcp = FastMCP("Banking Content Server")
+
+@mcp.tool()
+def search_content(
+    classes: List[str],
+    filters: Optional[Dict[str, List[str]]] = None,
+    limit: Optional[int] = 50
+) -> str:
+    """Search and filter banking content items by class and attributes.
     
-    def add_tool(self, name: str, description: str, input_schema: dict):
-        """Add a tool to the server."""
-        self.tools.append({
-            "name": name,
-            "description": description,
-            "inputSchema": input_schema
-        })
+    Args:
+        classes: Content classes to search (standing_instruction, autopayment, service_link)
+        filters: Key-value filters to apply (e.g., {"status": ["active"], "customer_id": ["C123"]})
+        limit: Maximum number of results to return
     
-    async def handle_request(self, request: dict) -> dict:
-        """Handle incoming JSON-RPC requests."""
-        method = request.get("method")
-        params = request.get("params", {})
-        request_id = request.get("id")
-        
-        try:
-            if method == "initialize":
-                result = {
-                    "protocolVersion": "2024-11-05",
-                    "capabilities": {
-                        "tools": {}
-                    },
-                    "serverInfo": {
-                        "name": self.name,
-                        "version": "0.1.0"
-                    }
-                }
-            elif method == "tools/list":
-                result = {"tools": self.tools}
-            elif method == "tools/call":
-                tool_name = params.get("name")
-                arguments = params.get("arguments", {})
-                result = await self.call_tool(tool_name, arguments)
-            else:
-                return {
-                    "jsonrpc": "2.0",
-                    "id": request_id,
-                    "error": {
-                        "code": -32601,
-                        "message": f"Method not found: {method}"
-                    }
-                }
-            
-            return {
-                "jsonrpc": "2.0",
-                "id": request_id,
-                "result": result
-            }
-        
-        except Exception as e:
-            return {
-                "jsonrpc": "2.0",
-                "id": request_id,
-                "error": {
-                    "code": -32603,
-                    "message": f"Internal error: {str(e)}"
-                }
-            }
+    Returns:
+        JSON string with search results
+    """
+    if filters is None:
+        filters = {}
     
-    async def call_tool(self, name: str, arguments: dict) -> dict:
-        """Handle tool calls."""
-        if name != "search_content":
-            raise ValueError(f"Unknown tool: {name}")
+    results = []
+    for item in DATA:
+        # Filter by classes
+        if classes and item.cls not in classes:
+            continue
         
-        classes = arguments.get("classes", [])
-        filters = arguments.get("filters", {})
-        limit = arguments.get("limit", 50)
-        
-        results = []
-        for item in DATA:
-            if classes and item.cls not in classes:
-                continue
-            
-            match = True
-            for key, vals in filters.items():
-                if key not in item.indexes or item.indexes[key] not in vals:
-                    match = False
-                    break
-            
-            if match:
-                results.append(item)
-            
-            if limit and len(results) >= limit:
+        # Apply filters
+        match = True
+        for key, vals in filters.items():
+            if key not in item.indexes or item.indexes[key] not in vals:
+                match = False
                 break
         
-        # Format results as JSON string
-        result_data = [item.to_dict() for item in results]
-        result_text = json.dumps(result_data, indent=2)
+        if match:
+            results.append(item.model_dump())
         
-        return {
-            "content": [
-                {
-                    "type": "text",
-                    "text": f"Found {len(results)} content items:\n\n{result_text}"
-                }
-            ]
-        }
+        if limit and len(results) >= limit:
+            break
+    
+    return json.dumps({
+        "success": True,
+        "count": len(results),
+        "items": results,
+        "summary": f"Found {len(results)} items matching criteria"
+    }, indent=2)
 
-# Initialize server
-server = MCPServer("content-mcp-server")
-
-# Add search tool
-server.add_tool(
-    name="search_content",
-    description="Search and filter content items by class and attributes",
-    input_schema={
-        "type": "object",
-        "properties": {
-            "classes": {
-                "type": "array",
-                "items": {"type": "string"},
-                "description": "Content classes to search (standing_instruction, autopayment, service_link)"
-            },
-            "filters": {
-                "type": "object",
-                "description": "Key-value filters to apply",
-                "additionalProperties": {
-                    "type": "array",
-                    "items": {"type": "string"}
-                }
-            },
-            "limit": {
-                "type": "integer",
-                "description": "Maximum number of results to return",
-                "default": 50
-            }
-        },
-        "required": ["classes"]
-    }
-)
-
-# Check if running in HTTP mode (AWS/Render deployment)
+# Check if running in HTTP mode for Salesforce integration
 if os.getenv("PORT") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
     # HTTP mode for cloud deployment
-    from fastapi import FastAPI, HTTPException, Header
+    from fastapi import FastAPI, Header
     from fastapi.responses import HTMLResponse
     from fastapi.middleware.cors import CORSMiddleware
-    from pydantic import BaseModel
     import uvicorn
     
-    app = FastAPI(title="Content MCP Server - HTTP Mode")
+    # Get the FastAPI app from FastMCP
+    app = mcp.create_app()
     
     # Add CORS for Salesforce integration
     app.add_middleware(
@@ -200,25 +102,14 @@ if os.getenv("PORT") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
     )
     
     class SearchRequest(BaseModel):
-        classes: List[str]
-        filters: Dict[str, List[str]] = {}
+        classes: str
+        status: Optional[str] = None
+        customer_id: Optional[str] = None
         limit: Optional[int] = 50
     
     @app.get("/health")
     def health():
         return {"status": "ok", "message": "Content MCP Server is running in HTTP mode"}
-    
-    @app.post("/tools/call")
-    async def call_tool_http(request: SearchRequest):
-        """HTTP endpoint that mimics MCP tool calling."""
-        arguments = request.dict()
-        result = await server.call_tool("search_content", arguments)
-        return result
-    
-    @app.get("/tools/list")
-    def list_tools_http():
-        """HTTP endpoint to list available tools."""
-        return {"tools": server.tools}
     
     @app.get("/", response_class=HTMLResponse)
     def test_interface():
@@ -255,20 +146,19 @@ if os.getenv("PORT") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
                 document.getElementById('searchForm').onsubmit = async (e) => {
                     e.preventDefault();
                     
-                    const classes = document.getElementById('classes').value.split(',').map(s => s.trim());
-                    const filters = {};
-                    
+                    const classes = document.getElementById('classes').value;
                     const status = document.getElementById('status').value;
-                    if (status) filters.status = [status];
-                    
                     const customerId = document.getElementById('customer_id').value;
-                    if (customerId) filters.customer_id = [customerId];
+                    
+                    const payload = { classes };
+                    if (status) payload.status = status;
+                    if (customerId) payload.customer_id = customerId;
                     
                     try {
-                        const response = await fetch('/tools/call', {
+                        const response = await fetch('/api/v1/actions/search_content', {
                             method: 'POST',
                             headers: {'Content-Type': 'application/json'},
-                            body: JSON.stringify({classes, filters, limit: 50})
+                            body: JSON.stringify(payload)
                         });
                         
                         const result = await response.json();
@@ -281,83 +171,6 @@ if os.getenv("PORT") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
         </body>
         </html>
         """
-    
-    # Salesforce-compatible REST API
-    @app.get("/api/v1/content")
-    async def search_content_salesforce(
-        classes: str = "standing_instruction,autopayment,service_link",
-        status: str = None,
-        customer_id: str = None,
-        limit: int = 50,
-        authorization: str = Header(None, alias="Authorization")
-    ):
-        """Salesforce-compatible REST endpoint for content search."""
-        
-        # Simple API key validation (optional for demo)
-        # if authorization != "Bearer your-api-key":
-        #     raise HTTPException(status_code=401, detail="Unauthorized")
-        
-        # Parse parameters
-        class_list = [c.strip() for c in classes.split(",")]
-        filters = {}
-        if status:
-            filters["status"] = [status]
-        if customer_id:
-            filters["customer_id"] = [customer_id]
-        
-        # Call the MCP tool logic
-        arguments = {"classes": class_list, "filters": filters, "limit": limit}
-        mcp_result = await server.call_tool("search_content", arguments)
-        
-        # Transform MCP result to Salesforce-friendly format
-        content_text = mcp_result["content"][0]["text"]
-        # Extract JSON from the text response
-        json_start = content_text.find("[\n")
-        if json_start != -1:
-            json_data = content_text[json_start:]
-            items = json.loads(json_data)
-        else:
-            items = []
-        
-        return {
-            "success": True,
-            "count": len(items),
-            "data": items,
-            "metadata": {
-                "classes_searched": class_list,
-                "filters_applied": filters,
-                "limit": limit
-            }
-        }
-    
-    @app.post("/api/v1/content/search")
-    async def search_content_salesforce_post(
-        request: SearchRequest,
-        authorization: str = Header(None, alias="Authorization")
-    ):
-        """POST version for complex Salesforce queries."""
-        
-        # Simple API key validation (optional for demo)
-        # if authorization != "Bearer your-api-key":
-        #     raise HTTPException(status_code=401, detail="Unauthorized")
-        
-        arguments = request.dict()
-        mcp_result = await server.call_tool("search_content", arguments)
-        
-        # Transform to Salesforce format
-        content_text = mcp_result["content"][0]["text"]
-        json_start = content_text.find("[\n")
-        if json_start != -1:
-            json_data = content_text[json_start:]
-            items = json.loads(json_data)
-        else:
-            items = []
-        
-        return {
-            "success": True,
-            "count": len(items),
-            "data": items
-        }
     
     # Health check for AWS/Salesforce
     @app.get("/api/health")
@@ -382,7 +195,7 @@ if os.getenv("PORT") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
             },
             "servers": [
                 {
-                    "url": "https://your-render-app.onrender.com/api/v1",
+                    "url": "/api/v1",
                     "description": "Production server"
                 }
             ],
@@ -425,24 +238,11 @@ if os.getenv("PORT") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
                                         "schema": {
                                             "type": "object",
                                             "properties": {
-                                                "success": {
-                                                    "type": "boolean"
-                                                },
+                                                "success": {"type": "boolean"},
                                                 "result": {
                                                     "type": "object",
                                                     "properties": {
-                                                        "items": {
-                                                            "type": "array",
-                                                            "items": {
-                                                                "type": "object",
-                                                                "properties": {
-                                                                    "id": {"type": "string"},
-                                                                    "cls": {"type": "string"},
-                                                                    "text": {"type": "string"},
-                                                                    "indexes": {"type": "object"}
-                                                                }
-                                                            }
-                                                        },
+                                                        "items": {"type": "array"},
                                                         "summary": {"type": "string"},
                                                         "metadata": {"type": "object"}
                                                     }
@@ -458,87 +258,40 @@ if os.getenv("PORT") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
             }
         }
 
-    # Alternative endpoint for AgentForce action discovery (keep this too)
-    @app.get("/api/v1/agentforce/actions")
-    def list_actions_agentforce():
-        """List available actions for AgentForce agents (alternative endpoint)."""
-        return {
-            "actions": [
-                {
-                    "name": "search_content",
-                    "displayName": "Search Content Items", 
-                    "description": "Search and filter banking content items like standing instructions, autopayments, and service links",
-                    "parameters": [
-                        {
-                            "name": "classes",
-                            "type": "string",
-                            "required": True,
-                            "description": "Comma-separated content classes: standing_instruction, autopayment, service_link"
-                        },
-                        {
-                            "name": "status", 
-                            "type": "string",
-                            "required": False,
-                            "description": "Filter by status: active, closed"
-                        },
-                        {
-                            "name": "customer_id",
-                            "type": "string", 
-                            "required": False,
-                            "description": "Filter by customer ID (e.g., C123)"
-                        }
-                    ],
-                    "returnType": "object"
-                }
-            ]
-        }
-
     @app.post("/api/v1/actions/search_content")
-    async def execute_search_agentforce_json(request: dict):
-        """Execute search action with JSON body for better Salesforce integration."""
+    async def execute_search_agentforce(request: SearchRequest):
+        """Execute search action for Salesforce AgentForce integration."""
         
-        # Extract parameters from JSON body
-        classes = request.get("classes", "")
-        status = request.get("status")
-        customer_id = request.get("customer_id")
-        limit = request.get("limit", 50)
+        # Parse classes parameter
+        class_list = [c.strip() for c in request.classes.split(",") if c.strip()]
         
-        # Parse and execute search
-        class_list = [c.strip() for c in classes.split(",")]
+        # Build filters
         filters = {}
-        if status:
-            filters["status"] = [status]
-        if customer_id:
-            filters["customer_id"] = [customer_id]
+        if request.status:
+            filters["status"] = [request.status]
+        if request.customer_id:
+            filters["customer_id"] = [request.customer_id]
         
-        arguments = {"classes": class_list, "filters": filters, "limit": limit}
-        mcp_result = await server.call_tool("search_content", arguments)
+        # Call the search function
+        result_json = search_content(
+            classes=class_list,
+            filters=filters,
+            limit=request.limit
+        )
         
-        # AgentForce-friendly response format
-        content_text = mcp_result["content"][0]["text"]
-        json_start = content_text.find("[\n")
-        if json_start != -1:
-            json_data = content_text[json_start:]
-            items = json.loads(json_data)
-        else:
-            items = []
+        # Parse the JSON result
+        result_data = json.loads(result_json)
         
         return {
             "success": True,
             "result": {
-                "items": items,
-                "summary": f"Found {len(items)} items matching criteria",
+                "items": result_data["items"],
+                "summary": result_data["summary"],
                 "metadata": {
                     "searched_classes": class_list,
                     "applied_filters": filters,
-                    "total_results": len(items)
+                    "total_results": result_data["count"]
                 }
-            },
-            "agentContext": {
-                "nextSuggestedActions": [
-                    "refine_search" if len(items) > 10 else "create_report",
-                    "export_results" if len(items) > 0 else "try_different_criteria"
-                ]
             }
         }
 
@@ -547,42 +300,6 @@ if os.getenv("PORT") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
         uvicorn.run(app, host="0.0.0.0", port=port)
 
 else:
-    # MCP mode (stdio)
-    async def main():
-        """Run the MCP server."""
-        while True:
-            try:
-                # Read JSON-RPC request from stdin
-                line = await asyncio.get_event_loop().run_in_executor(None, sys.stdin.readline)
-                if not line:
-                    break
-                
-                request = json.loads(line.strip())
-                response = await server.handle_request(request)
-                
-                # Write JSON-RPC response to stdout
-                print(json.dumps(response), flush=True)
-            
-            except json.JSONDecodeError:
-                error_response = {
-                    "jsonrpc": "2.0",
-                    "id": None,
-                    "error": {
-                        "code": -32700,
-                        "message": "Parse error"
-                    }
-                }
-                print(json.dumps(error_response), flush=True)
-            except Exception as e:
-                error_response = {
-                    "jsonrpc": "2.0",
-                    "id": None,
-                    "error": {
-                        "code": -32603,
-                        "message": f"Internal error: {str(e)}"
-                    }
-                }
-                print(json.dumps(error_response), flush=True)
-
+    # MCP mode - FastMCP handles this automatically
     if __name__ == "__main__":
-        asyncio.run(main())
+        mcp.run()
