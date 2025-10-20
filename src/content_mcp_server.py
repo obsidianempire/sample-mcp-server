@@ -152,7 +152,7 @@ def search_content(
     }, indent=2)
 
 # Check if running in HTTP mode for Salesforce integration
-if os.getenv("PORT") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
+if  os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
     # HTTP mode for cloud deployment
     from fastapi import FastAPI, Header
     from fastapi.responses import HTMLResponse
