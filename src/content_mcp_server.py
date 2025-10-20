@@ -10,11 +10,81 @@ For Salesforce AgentForce integration (recommended):
 PORT=10000 python content_mcp_server.py
 """
 
+import asyncio
+import inspect
 import json
 import os
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
-from fastmcp import FastMCP
+try:
+    from fastmcp import FastMCP  # type: ignore
+except ModuleNotFoundError:  # pragma: no cover - fallback only used in restricted envs
+    from fastapi import FastAPI
+    from fastapi import HTTPException as FastMCPHTTPException
+    from pydantic import BaseModel as FastMCPBaseModel
+
+    class _ToolCallRequest(FastMCPBaseModel):
+        tool: str
+        args: Dict[str, Any] | None = None
+
+    class FastMCP:
+        """
+        Minimal FastMCP-compatible fallback used when the fastmcp package is not available.
+        Supports tool registration plus basic /tools endpoints needed for HTTP mode deployments.
+        """
+
+        def __init__(self, name: str | None = None, *_, **__):
+            self.name = name or "FastMCP-Fallback"
+            self._tools: Dict[str, Any] = {}
+
+        def tool(self):
+            def decorator(func):
+                self._tools[func.__name__] = func
+                return func
+
+            return decorator
+
+        def create_app(self) -> FastAPI:
+            app = FastAPI(title=self.name)
+
+            @app.get("/tools/list")
+            def list_tools():
+                return {
+                    "success": True,
+                    "tools": [
+                        {
+                            "name": name,
+                            "description": inspect.getdoc(func) or "",
+                        }
+                        for name, func in self._tools.items()
+                    ],
+                }
+
+            @app.post("/tools/call")
+            async def call_tool(request: _ToolCallRequest):
+                tool = self._tools.get(request.tool)
+                if tool is None:
+                    raise FastMCPHTTPException(
+                        status_code=404,
+                        detail=f"Tool '{request.tool}' is not registered",
+                    )
+
+                kwargs = request.args or {}
+                result = tool(**kwargs)
+                if inspect.isawaitable(result):
+                    result = await result
+
+                return {"success": True, "result": result}
+
+            return app
+
+        def run(self, *_, **__):
+            raise RuntimeError(
+                "The fastmcp package is not installed. HTTP mode is available, but MCP mode "
+                "requires installing fastmcp (pip install fastmcp)."
+            )
+
+from pydantic import BaseModel
 from pydantic import BaseModel
 
 # ---------------- Data model ----------------
@@ -302,4 +372,4 @@ if os.getenv("PORT") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
 else:
     # MCP mode - FastMCP handles this automatically
     if __name__ == "__main__":
-        mcp.run()
+        mcp.run(transport="sse",host="0.0.0.0",port=10000)
