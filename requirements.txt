@@ -1,6 +1,6 @@
 mcp-server>=0.1.0
 fastmcp>=0.2.0
+fastapi>=0.110.0
 pydantic>=2.0.0
 uvicorn>=0.20.0
-uvloop; platform_system != "Windows"
 uvloop; platform_system != "Windows"
