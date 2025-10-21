@@ -3,10 +3,10 @@
 ## Prerequisites
 
 1. **Salesforce Developer Edition org** - [Sign up here](https://developer.salesforce.com/signup)
-2. **Your MCP server deployed via HTTP** - Use Render URL (e.g., `https://your-app.onrender.com`)
+2. **Your MCP server deployed via HTTP** - Use Render URL (e.g., `https://your-app.onrender.com`) and ensure the environment variable `MCP_SERVER_MODE=http` is set so the server exposes the REST endpoints
 3. **AgentForce may not be available in all Developer Edition orgs yet**
 
-**Note**: This integration uses HTTP REST API mode, not stdio. The MCP server automatically runs in HTTP mode when deployed to cloud platforms like Render.
+**Note**: This integration uses HTTP REST API mode, not stdio. Set the `MCP_SERVER_MODE=http` environment variable (Render example does this via service settings) to ensure the server runs in HTTP mode.
 
 ## Step 1: Check AgentForce Availability
 

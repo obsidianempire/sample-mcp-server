@@ -151,8 +151,17 @@ def search_content(
         "summary": f"Found {len(results)} items matching criteria"
     }, indent=2)
 
+# Determine desired runtime mode (HTTP/REST or MCP)
+_mode_env = os.getenv("MCP_SERVER_MODE")
+if _mode_env:
+    _runtime_mode = _mode_env.strip().lower()
+elif os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
+    _runtime_mode = "http"
+else:
+    _runtime_mode = "mcp"
+
 # Check if running in HTTP mode for Salesforce integration
-if  os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
+if _runtime_mode in {"http", "rest"}:
     # HTTP mode for cloud deployment
     from fastapi import FastAPI, Header
     from fastapi.responses import HTMLResponse
@@ -372,4 +381,5 @@ if  os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
 else:
     # MCP mode - FastMCP handles this automatically
     if __name__ == "__main__":
-        mcp.run(transport="sse",host="0.0.0.0",port=10000)
+        transport = os.getenv("MCP_TRANSPORT", "sse").strip().lower()
+        mcp.run(transport=transport, host="0.0.0.0", port=10000)

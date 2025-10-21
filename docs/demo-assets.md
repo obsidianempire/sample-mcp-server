@@ -30,7 +30,7 @@ Record a successful demo session showing:
 
 ### Option 2: Local Development Demo
 If cloud services fail:
-- Run MCP server locally with `python content_mcp_server.py`
+- Run MCP server locally with `MCP_SERVER_MODE=http python src/content_mcp_server.py` for HTTP demos, or `MCP_SERVER_MODE=mcp python src/content_mcp_server.py` (optionally set `MCP_TRANSPORT` to `http` or `sse`; defaults to `sse`)
 - Use ngrok for public endpoint: `ngrok http 10000`
 - Update Named Credential to ngrok URL
 - Proceed with normal demo

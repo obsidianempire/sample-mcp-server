@@ -34,13 +34,19 @@ A Model Context Protocol (MCP) server designed for integration with Salesforce A
 
 3. **Run as HTTP server** (for Salesforce integration):
    ```bash
-   PORT=10000 python src/content_mcp_server.py
+   MCP_SERVER_MODE=http PORT=10000 python src/content_mcp_server.py
    ```
    Then visit: http://localhost:10000
 
 4. **Run as MCP server** (for MCP clients only):
    ```bash
    python src/content_mcp_server.py
+   ```
+   Set the `MCP_TRANSPORT` environment variable to switch between transports (defaults to `sse`):
+   ```bash
+   MCP_SERVER_MODE=mcp python src/content_mcp_server.py  # Explicitly select MCP mode
+   MCP_SERVER_MODE=mcp MCP_TRANSPORT=http python src/content_mcp_server.py  # HTTP transport
+   MCP_SERVER_MODE=mcp MCP_TRANSPORT=sse python src/content_mcp_server.py   # Server-sent events
    ```
 
 ### Cloud Deployment (Render)
@@ -50,6 +56,7 @@ A Model Context Protocol (MCP) server designed for integration with Salesforce A
 3. **Configure build settings**:
    - Build Command: `pip install -r requirements.txt`
    - Start Command: `python src/content_mcp_server.py`
+   - Environment Variables: `PORT=10000`, `MCP_SERVER_MODE=http`
 4. **Deploy and get your public URL**
 
 ### Salesforce AgentForce Setup

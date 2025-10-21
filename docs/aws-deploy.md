@@ -1,5 +1,7 @@
 # AWS Deployment for Salesforce Integration
 
+> **Important:** Expose the HTTP endpoints by setting the environment variable `MCP_SERVER_MODE=http` for any container or server-based deployment. AWS Lambda sets `AWS_LAMBDA_FUNCTION_NAME` automatically, so no additional configuration is required there.
+
 ## Option 1: AWS Lambda + API Gateway
 
 1. **Package for Lambda:**
@@ -34,6 +36,7 @@ CMD ["uvicorn", "src.content_mcp_server:app", "--host", "0.0.0.0", "--port", "80
 2. **Deploy to ECS/Fargate**
 3. **Configure Application Load Balancer**
 4. **Set up SSL certificate**
+5. **Set task environment variable** `MCP_SERVER_MODE=http` so FastAPI app is available when the container starts
 
 ## Salesforce Integration
 
