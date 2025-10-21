@@ -36,15 +36,18 @@ A Model Context Protocol (MCP) server designed for integration with Salesforce A
    ```bash
    MCP_SERVER_MODE=http PORT=10000 python src/content_mcp_server.py
    ```
-   Then visit: http://localhost:10000
+   Then visit: http://localhost:10000 (this is also the default mode when `MCP_SERVER_MODE` is not set)
 
 4. **Run as MCP server** (for MCP clients only):
    ```bash
-   python src/content_mcp_server.py
+   MCP_SERVER_MODE=mcp python src/content_mcp_server.py
+   ```
+   Install the optional MCP dependency when using this mode:
+   ```bash
+   pip install fastmcp
    ```
    Set the `MCP_TRANSPORT` environment variable to switch between transports (defaults to `sse`):
    ```bash
-   MCP_SERVER_MODE=mcp python src/content_mcp_server.py  # Explicitly select MCP mode
    MCP_SERVER_MODE=mcp MCP_TRANSPORT=http python src/content_mcp_server.py  # HTTP transport
    MCP_SERVER_MODE=mcp MCP_TRANSPORT=sse python src/content_mcp_server.py   # Server-sent events
    ```
@@ -56,7 +59,13 @@ A Model Context Protocol (MCP) server designed for integration with Salesforce A
 3. **Configure build settings**:
    - Build Command: `pip install -r requirements.txt`
    - Start Command: `python src/content_mcp_server.py`
-   - Environment Variables: `PORT=10000`, `MCP_SERVER_MODE=http`
+   - Environment Variables:
+     - `PORT=10000`
+     - `MCP_SERVER_MODE=http` (default HTTP/REST mode for Salesforce)
+4. **Optional – MCP mode instead of HTTP**:
+   - Add `fastmcp` to your dependencies (e.g., `pip install fastmcp` during build or include it in `requirements.txt`)
+   - Change the environment variable to `MCP_SERVER_MODE=mcp`
+   - (Recommended) set `MCP_TRANSPORT=sse` unless your MCP client expects HTTP transport
 4. **Deploy and get your public URL**
 
 ### Salesforce AgentForce Setup

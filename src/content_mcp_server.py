@@ -1,90 +1,33 @@
 """
-Content MCP Server - Using FastMCP for simplified implementation
+Content MCP Server - Multi-mode deployment
 
-This server uses FastMCP to handle MCP protocol and provides HTTP mode for Salesforce AgentForce integration.
+This server provides HTTP endpoints for Salesforce AgentForce integration and can optionally
+expose the Model Context Protocol (MCP) when the ``fastmcp`` package is installed.
 
 For MCP usage with compatible clients:
-python content_mcp_server.py
+python src/content_mcp_server.py
 
 For Salesforce AgentForce integration (recommended):
-PORT=10000 python content_mcp_server.py
+MCP_SERVER_MODE=http PORT=10000 python src/content_mcp_server.py
 """
 
-import asyncio
 import inspect
 import json
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
-try:
-    from fastmcp import FastMCP  # type: ignore
-except ModuleNotFoundError:  # pragma: no cover - fallback only used in restricted envs
-    from fastapi import FastAPI
-    from fastapi import HTTPException as FastMCPHTTPException
-    from pydantic import BaseModel as FastMCPBaseModel
+TOOL_REGISTRY: Dict[str, Callable[..., Any]] = {}
 
-    class _ToolCallRequest(FastMCPBaseModel):
-        tool: str
-        args: Dict[str, Any] | None = None
 
-    class FastMCP:
-        """
-        Minimal FastMCP-compatible fallback used when the fastmcp package is not available.
-        Supports tool registration plus basic /tools endpoints needed for HTTP mode deployments.
-        """
+def register_tool(func: Callable[..., Any]):
+    """Register a tool function and return it unchanged."""
+    TOOL_REGISTRY[func.__name__] = func
+    return func
 
-        def __init__(self, name: str | None = None, *_, **__):
-            self.name = name or "FastMCP-Fallback"
-            self._tools: Dict[str, Any] = {}
 
-        def tool(self):
-            def decorator(func):
-                self._tools[func.__name__] = func
-                return func
+mcp: Any | None = None
 
-            return decorator
 
-        def create_app(self) -> FastAPI:
-            app = FastAPI(title=self.name)
-
-            @app.get("/tools/list")
-            def list_tools():
-                return {
-                    "success": True,
-                    "tools": [
-                        {
-                            "name": name,
-                            "description": inspect.getdoc(func) or "",
-                        }
-                        for name, func in self._tools.items()
-                    ],
-                }
-
-            @app.post("/tools/call")
-            async def call_tool(request: _ToolCallRequest):
-                tool = self._tools.get(request.tool)
-                if tool is None:
-                    raise FastMCPHTTPException(
-                        status_code=404,
-                        detail=f"Tool '{request.tool}' is not registered",
-                    )
-
-                kwargs = request.args or {}
-                result = tool(**kwargs)
-                if inspect.isawaitable(result):
-                    result = await result
-
-                return {"success": True, "result": result}
-
-            return app
-
-        def run(self, *_, **__):
-            raise RuntimeError(
-                "The fastmcp package is not installed. HTTP mode is available, but MCP mode "
-                "requires installing fastmcp (pip install fastmcp)."
-            )
-
-from pydantic import BaseModel
 from pydantic import BaseModel
 
 # ---------------- Data model ----------------
@@ -103,10 +46,8 @@ DATA = [
     ContentItem(id="ap-260", cls="autopayment", text="$55.00 to GymPro on the 1st monthly from Credit ****7676.", indexes={"status":"active","customer_id":"C789"}),
 ]
 
-# Initialize FastMCP server
-mcp = FastMCP("Banking Content Server")
-
-@mcp.tool()
+# Register tool for both HTTP and MCP usage
+@register_tool
 def search_content(
     classes: List[str],
     filters: Optional[Dict[str, List[str]]] = None,
@@ -158,19 +99,28 @@ if _mode_env:
 elif os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
     _runtime_mode = "http"
 else:
-    _runtime_mode = "mcp"
+    _runtime_mode = "http"
 
 # Check if running in HTTP mode for Salesforce integration
 if _runtime_mode in {"http", "rest"}:
     # HTTP mode for cloud deployment
-    from fastapi import FastAPI, Header
-    from fastapi.responses import HTMLResponse
+    from fastapi import FastAPI, HTTPException
     from fastapi.middleware.cors import CORSMiddleware
+    from fastapi.responses import HTMLResponse
     import uvicorn
-    
-    # Get the FastAPI app from FastMCP
-    app = mcp.create_app()
-    
+
+    app = FastAPI(title="Banking Content Server")
+
+    class ToolCallRequest(BaseModel):
+        tool: str
+        args: Dict[str, Any] | None = None
+
+    class SearchRequest(BaseModel):
+        classes: str
+        status: Optional[str] = None
+        customer_id: Optional[str] = None
+        limit: Optional[int] = 50
+
     # Add CORS for Salesforce integration
     app.add_middleware(
         CORSMiddleware,
@@ -179,17 +129,39 @@ if _runtime_mode in {"http", "rest"}:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    
-    class SearchRequest(BaseModel):
-        classes: str
-        status: Optional[str] = None
-        customer_id: Optional[str] = None
-        limit: Optional[int] = 50
-    
+
+    @app.get("/tools/list")
+    def list_tools():
+        """List registered tools for compatibility with MCP-style clients."""
+        return {
+            "success": True,
+            "tools": [
+                {"name": name, "description": inspect.getdoc(func) or ""}
+                for name, func in TOOL_REGISTRY.items()
+            ],
+        }
+
+    @app.post("/tools/call")
+    async def call_tool(request: ToolCallRequest):
+        """Invoke a registered tool."""
+        tool = TOOL_REGISTRY.get(request.tool)
+        if tool is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Tool '{request.tool}' is not registered",
+            )
+
+        kwargs = request.args or {}
+        result = tool(**kwargs)
+        if inspect.isawaitable(result):
+            result = await result
+
+        return {"success": True, "result": result}
+
     @app.get("/health")
     def health():
         return {"status": "ok", "message": "Content MCP Server is running in HTTP mode"}
-    
+
     @app.get("/", response_class=HTMLResponse)
     def test_interface():
         """Simple web interface to test the server."""
@@ -250,7 +222,7 @@ if _runtime_mode in {"http", "rest"}:
         </body>
         </html>
         """
-    
+
     # Health check for AWS/Salesforce
     @app.get("/api/health")
     def health_check():
@@ -260,7 +232,7 @@ if _runtime_mode in {"http", "rest"}:
             "version": "0.1.0",
             "capabilities": ["mcp", "rest-api", "salesforce-integration"]
         }
-    
+
     # OpenAPI schema endpoint for Salesforce External Service registration
     @app.get("/api/v1/actions")
     def get_openapi_schema():
@@ -379,7 +351,18 @@ if _runtime_mode in {"http", "rest"}:
         uvicorn.run(app, host="0.0.0.0", port=port)
 
 else:
-    # MCP mode - FastMCP handles this automatically
+    try:
+        from fastmcp import FastMCP  # type: ignore
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(
+            "MCP mode requires the optional 'fastmcp' package. "
+            "Install it with 'pip install fastmcp' or switch to HTTP mode by setting MCP_SERVER_MODE=http."
+        ) from exc
+
+    mcp = FastMCP("Banking Content Server")
+    for func in TOOL_REGISTRY.values():
+        mcp.tool()(func)
+
     if __name__ == "__main__":
         transport = os.getenv("MCP_TRANSPORT", "sse").strip().lower()
         mcp.run(transport=transport, host="0.0.0.0", port=10000)
