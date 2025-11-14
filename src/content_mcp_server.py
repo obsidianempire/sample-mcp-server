@@ -28,69 +28,6 @@ def register_tool(func: Callable[..., Any]):
 mcp: Any | None = None
 
 
-from pydantic import BaseModel
-
-# ---------------- Data model ----------------
-class ContentItem(BaseModel):
-    id: str
-    cls: str
-    text: str
-    indexes: Dict[str, str]
-
-# Example dataset
-DATA = [
-    ContentItem(id="si-001", cls="standing_instruction", text="Transfer $500 monthly from Checking ****1234 to Mortgage ****5678.", indexes={"status":"active","customer_id":"C123"}),
-    ContentItem(id="ap-042", cls="autopayment", text="$79.99 to Verizon on the 15th monthly from Credit ****4242.", indexes={"status":"active","customer_id":"C123"}),
-    ContentItem(id="sl-310", cls="service_link", text="Linked insurance: Homeowners policy ABC-987 with Acme Insurance.", indexes={"status":"active","customer_id":"C123"}),
-    ContentItem(id="sl-456", cls="service_link", text="Closed Roth IRA at Delta Funds (transferred out 2024-12-31).", indexes={"status":"closed","customer_id":"C456"}),
-    ContentItem(id="ap-260", cls="autopayment", text="$55.00 to GymPro on the 1st monthly from Credit ****7676.", indexes={"status":"active","customer_id":"C789"}),
-]
-
-# Register tool for both HTTP and MCP usage
-@register_tool
-def search_content(
-    classes: List[str],
-    filters: Optional[Dict[str, List[str]]] = None,
-    limit: Optional[int] = 50
-) -> str:
-    """Search and filter banking content items by class and attributes.
-    
-    Args:
-        classes: Content classes to search (standing_instruction, autopayment, service_link)
-        filters: Key-value filters to apply (e.g., {"status": ["active"], "customer_id": ["C123"]})
-        limit: Maximum number of results to return
-    
-    Returns:
-        JSON string with search results
-    """
-    if filters is None:
-        filters = {}
-    
-    results = []
-    for item in DATA:
-        # Filter by classes
-        if classes and item.cls not in classes:
-            continue
-        
-        # Apply filters
-        match = True
-        for key, vals in filters.items():
-            if key not in item.indexes or item.indexes[key] not in vals:
-                match = False
-                break
-        
-        if match:
-            results.append(item.model_dump())
-        
-        if limit and len(results) >= limit:
-            break
-    
-    return json.dumps({
-        "success": True,
-        "count": len(results),
-        "items": results,
-        "summary": f"Found {len(results)} items matching criteria"
-    }, indent=2)
 
 # Determine desired runtime mode (HTTP/REST or MCP)
 _mode_env = os.getenv("MCP_SERVER_MODE")
@@ -111,15 +48,6 @@ if _runtime_mode in {"http", "rest"}:
 
     app = FastAPI(title="Banking Content Server")
 
-    class ToolCallRequest(BaseModel):
-        tool: str
-        args: Dict[str, Any] | None = None
-
-    class SearchRequest(BaseModel):
-        classes: str
-        status: Optional[str] = None
-        customer_id: Optional[str] = None
-        limit: Optional[int] = 50
 
     # Add CORS for Salesforce integration
     app.add_middleware(
@@ -130,33 +58,6 @@ if _runtime_mode in {"http", "rest"}:
         allow_headers=["*"],
     )
 
-    @app.get("/tools/list")
-    def list_tools():
-        """List registered tools for compatibility with MCP-style clients."""
-        return {
-            "success": True,
-            "tools": [
-                {"name": name, "description": inspect.getdoc(func) or ""}
-                for name, func in TOOL_REGISTRY.items()
-            ],
-        }
-
-    @app.post("/tools/call")
-    async def call_tool(request: ToolCallRequest):
-        """Invoke a registered tool."""
-        tool = TOOL_REGISTRY.get(request.tool)
-        if tool is None:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Tool '{request.tool}' is not registered",
-            )
-
-        kwargs = request.args or {}
-        result = tool(**kwargs)
-        if inspect.isawaitable(result):
-            result = await result
-
-        return {"success": True, "result": result}
 
     @app.get("/health")
     def health():
@@ -234,117 +135,6 @@ if _runtime_mode in {"http", "rest"}:
         }
 
     # OpenAPI schema endpoint for Salesforce External Service registration
-    @app.get("/api/v1/actions")
-    def get_openapi_schema():
-        """Return OpenAPI schema for Salesforce External Service registration."""
-        return {
-            "openapi": "3.0.0",
-            "info": {
-                "title": "Content MCP Service",
-                "description": "Banking content search service",
-                "version": "1.0.0"
-            },
-            "servers": [
-                {
-                    "url": "/api/v1",
-                    "description": "Production server"
-                }
-            ],
-            "paths": {
-                "/actions/search_content": {
-                    "post": {
-                        "summary": "Search Content Items",
-                        "description": "Search and filter banking content items like standing instructions, autopayments, and service links",
-                        "operationId": "searchContent",
-                        "requestBody": {
-                            "required": True,
-                            "content": {
-                                "application/json": {
-                                    "schema": {
-                                        "type": "object",
-                                        "properties": {
-                                            "classes": {
-                                                "type": "string",
-                                                "description": "Comma-separated content classes: standing_instruction, autopayment, service_link"
-                                            },
-                                            "status": {
-                                                "type": "string",
-                                                "description": "Filter by status: active, closed"
-                                            },
-                                            "customer_id": {
-                                                "type": "string",
-                                                "description": "Filter by customer ID (e.g., C123)"
-                                            }
-                                        },
-                                        "required": ["classes"]
-                                    }
-                                }
-                            }
-                        },
-                        "responses": {
-                            "200": {
-                                "description": "Successful response",
-                                "content": {
-                                    "application/json": {
-                                        "schema": {
-                                            "type": "object",
-                                            "properties": {
-                                                "success": {"type": "boolean"},
-                                                "result": {
-                                                    "type": "object",
-                                                    "properties": {
-                                                        "items": {"type": "array"},
-                                                        "summary": {"type": "string"},
-                                                        "metadata": {"type": "object"}
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-    @app.post("/api/v1/actions/search_content")
-    async def execute_search_agentforce(request: SearchRequest):
-        """Execute search action for Salesforce AgentForce integration."""
-        
-        # Parse classes parameter
-        class_list = [c.strip() for c in request.classes.split(",") if c.strip()]
-        
-        # Build filters
-        filters = {}
-        if request.status:
-            filters["status"] = [request.status]
-        if request.customer_id:
-            filters["customer_id"] = [request.customer_id]
-        
-        # Call the search function
-        result_json = search_content(
-            classes=class_list,
-            filters=filters,
-            limit=request.limit
-        )
-        
-        # Parse the JSON result
-        result_data = json.loads(result_json)
-        
-        return {
-            "success": True,
-            "result": {
-                "items": result_data["items"],
-                "summary": result_data["summary"],
-                "metadata": {
-                    "searched_classes": class_list,
-                    "applied_filters": filters,
-                    "total_results": result_data["count"]
-                }
-            }
-        }
 
     # ------------------ Document / Index APIs for AgentForce ------------------
     import pathlib
@@ -403,6 +193,7 @@ if _runtime_mode in {"http", "rest"}:
             "fields": {k: sorted(list(v)) for k, v in fields.items()}
         }
 
+    from pydantic import BaseModel
     class SearchIndexesRequest(BaseModel):
         filters: Dict[str, List[str]]
 

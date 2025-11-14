@@ -2,10 +2,11 @@ AgentForce — Content Retrieval Mock Service
 
 This document explains how to configure Salesforce AgentForce (latest developer tooling) to call the Mock Content Retrieval Service provided by this repository.
 
+
 Overview
 - Service base URL (local dev): http://<host>:<port> (default port in this project: 10000)
 - FastAPI Swagger UI: http://<host>:<port>/docs
-- OpenAPI (custom export for External Services): http://<host>:<port>/api/v1/actions
+- OpenAPI (for Salesforce External Services): http://<host>:<port>/openapi.json
 
 Provided endpoints
 - GET /api/v1/indexes
@@ -38,8 +39,8 @@ How to register the service in Salesforce (External Service / AgentForce)
    - By default the app runs on port 10000.
 
 2. Obtain the OpenAPI descriptor for External Service registration:
-   - The project exposes a simple OpenAPI-like JSON at: http://<host>:10000/api/v1/actions
-   - Copy the JSON to a file or provide the URL to Salesforce if reachable from your org.
+  - The project exposes a standard OpenAPI JSON at: http://<host>:10000/openapi.json
+  - Copy the JSON to a file or provide the URL to Salesforce if reachable from your org.
 
 3. Create an External Service or Named Credential:
    - In the Salesforce Setup, search "External Services" and click New External Service.

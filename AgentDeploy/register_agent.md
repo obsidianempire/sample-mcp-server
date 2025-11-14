@@ -4,43 +4,48 @@ Agentforce Deployment Package
 1. Package contents
 -------------------
 This folder includes everything Salesforce needs to register your REST-hosted MCP service:
-- `AgentDeploy/content_mcp_stdio.py` — STDIO wrapper that forwards tool calls to the hosted `/search` endpoint.
-- `AgentDeploy/requirements.txt` — minimal dependency list (`mcp`, `aiohttp`).
 - `AgentDeploy/register_agent.md` — this runbook for Salesforce admins.
 
 2. Service overview
 -------------------
-- The REST API lives at `https://mcp-sample-p525.onrender.com`, exposing `/health` and `/search`.
-- The payload schema matches the `SearchBody` definition in the original FastAPI project (`classes`, `filters`, `limit`).
-- Tool responses are arrays of objects with `id`, `cls`, `text`, and `indexes`.
+- The REST API lives at `https://mcp-sample-p525.onrender.com`, exposing endpoints for document and index retrieval:
+  - `GET /api/v1/indexes` — List available index fields and values
+  - `POST /api/v1/search` — Search documents by index filters (supports numeric comparisons)
+  - `GET /api/v1/documents/{doc_id}` — Retrieve document content (text or raw PDF)
+  - `GET /api/v1/actions` — OpenAPI schema for Salesforce External Service registration
+  - `GET /docs` — Swagger UI for interactive testing
+
 
 3. Validate the hosted API
 --------------------------
-Run these commands from any environment that can reach the service:
+Test the new endpoints from any environment that can reach the service:
+
 ```powershell
+# Health check
 curl https://mcp-sample-p525.onrender.com/health
-curl -X POST https://mcp-sample-p525.onrender.com/search ^
-     -H "Content-Type: application/json" ^
-     -d "{\"classes\":[\"standing_instruction\"],\"filters\":{\"customer_id\":[\"C123\"],\"status\":[\"active\"]}}"
-```
-Expect a 200 OK and JSON payload containing the matching records.
 
-4. Install dependencies in Salesforce environment
--------------------------------------------------
-Before registering the tool, ensure the runtime where Agentforce launches MCP tools installs the bundled requirements:
-```bash
-pip install -r AgentDeploy/requirements.txt
-```
-> If pip access is restricted, install `mcp` and `aiohttp` through your approved package mechanism.
+# List available index fields
+curl https://mcp-sample-p525.onrender.com/api/v1/indexes
 
-5. Configure the STDIO wrapper
-------------------------------
-- Command: `python`
-- Arguments: `AgentDeploy/content_mcp_stdio.py`
-- Working directory: repository root or whichever directory keeps the `AgentDeploy/` folder intact.
-- Environment variables:
-  - `CONTENT_API_BASE_URL=https://mcp-sample-p525.onrender.com`
-  - Add authentication headers if the REST service is later secured (for example, `CONTENT_API_TOKEN`).
+# Search for invoices > 5000
+curl -X POST https://mcp-sample-p525.onrender.com/api/v1/search ^
+  -H "Content-Type: application/json" ^
+  -d "{\"filters\":{\"invoice_amount\":[\">5000\"]}}"
+
+# Retrieve document text
+curl https://mcp-sample-p525.onrender.com/api/v1/documents/000001.pdf?format=text
+
+# Retrieve raw PDF
+curl https://mcp-sample-p525.onrender.com/api/v1/documents/000001.pdf?format=raw
+
+# Swagger UI
+start https://mcp-sample-p525.onrender.com/docs
+```
+Expect a 200 OK and JSON payload or file content for each request.
+
+
+
+
 
 6. Register the tool in Salesforce Agentforce
 ---------------------------------------------
@@ -81,27 +86,28 @@ Primary (if you have the Tools UI):
    ```
 5. Save and attach the tool to the desired agent under **Tools & Integrations**.
 
+
 Alternate (recommended when "Tools" is not visible):
 
-Many Developer Edition orgs should instead register your MCP endpoints using Salesforce's Named Credential + External Service model and then reference the External Service actions from Agent Builder. This flow is functionally equivalent and is the recommended path when the "Tools" UI is absent.
+Many Developer Edition orgs should instead register your REST endpoints using Salesforce's Named Credential + External Service model and then reference the External Service actions from Agent Builder. This flow is functionally equivalent and is the recommended path when the "Tools" UI is absent.
 
 A. Create a Named Credential
 - Setup → Security → Named Credentials → New (or Legacy New)
 - Label/Name: `ContentMCPServer`
-- URL: `https://your-render-app.onrender.com`
+- URL: `https://mcp-sample-p525.onrender.com`
 - Identity Type: Named Principal
 - Authentication Protocol: No Authentication (for demo)
 
 B. Create an External Service
 - Setup → Integrations → External Services → New External Service
 - Service Name: `ContentMCPService`
-- Service Schema Source: From Endpoint (point at your server's OpenAPI/actions endpoint) or choose Manual Schema and paste a small OpenAPI snippet if Salesforce cannot fetch it.
+- Service Schema Source: From Endpoint (point at your server's `/api/v1/actions` endpoint) or choose Manual Schema and paste a small OpenAPI snippet if Salesforce cannot fetch it.
 
 C. Create / configure your Agent and add the action
 - Setup → Agentforce Agents → New Agent (or open an existing agent in Agent Builder)
 - In Agent Builder, create a Topic (or edit an existing Topic) and add an Action:
-  - Add Action → API → External Services → `ContentMCPService` → select the search action (e.g., `searchContent`)
-  - Configure input parameters for `classes`, `status` (or `filters`/`customer_id`) as text inputs per your schema.
+  - Add Action → API → External Services → `ContentMCPService` → select the search action (e.g., `search`)
+  - Configure input parameters for `filters` (e.g., `customer`, `invoice_amount`) as text inputs per your schema.
 
 Notes & troubleshooting
 - If External Service actions don't appear immediately in Agent Builder, wait 5–10 minutes for propagation, or try deactivating/reactivating the agent (Agent Builder locks edits while active).
@@ -123,8 +129,4 @@ Notes & troubleshooting
    ```
 4. Verify the response echoes the data returned by the Render service.
 
-8. Troubleshooting
-------------------
-- **No output**: run `python AgentDeploy/content_mcp_stdio.py` locally to check for import errors.
-- **HTTP errors**: confirm `CONTENT_API_BASE_URL` points at a live environment and that the service responds to `/health`.
-- **Empty results**: ensure the class/filter values match available records (see sample payload above).
+
