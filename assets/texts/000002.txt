@@ -1,0 +1,28 @@
+NovaLink Cloud Solutions, Inc.
+Enterprise Subscription Agreement
+ Acme Industries
+ 
+Enterprise Subscription Agreement This Enterprise Subscription Agreement (“Agreement”) is
+entered into as of January 15, 2025 (“Effective Date”) between NovaLink Cloud Solutions, Inc., a
+Delaware corporation with principal offices located at 1190 Market Street, San Francisco, CA, and
+Acme Industries, a manufacturing and logistics company headquartered in Toledo, Ohio (“Customer”).
+1. Scope of Services.
+NovaLink agrees to provide Customer with access to the NovaLink Enterprise Suite – Tier 3, including
+workflow automation, document intelligence processing, and secure data integration features.
+Customer shall receive 450 licensed user seats under this subscription. 2. Term & Renewal.
+The initial term of this Agreement shall run from January 15, 2025 through January 14, 2026
+(“Subscription Term”). The Agreement shall renew automatically for successive one-year periods
+unless either party provides written notice of non■renewal at least sixty (60) days prior to the end of the
+then■current term. 3. Service Levels & Support.
+NovaLink guarantees a 99.95% uptime service■level agreement (“SLA”), excluding scheduled
+maintenance windows. Customer shall receive 24/7 enterprise support with a dedicated Customer
+Success Manager (“CSM”). 4. Fees.
+Customer agrees to pay an annual subscription fee of $185,000 USD, due within thirty (30) days of
+invoice. 5. Additional Provisions.
+NovaLink shall provide up to two (2) custom connector development projects per year at no additional
+charge. NovaLink will also provide priority onboarding, with full environment provisioning within fourteen
+(14) business days. 6. Data Protection.
+All customer data shall be retained for a minimum of seven (7) years unless otherwise required by law.
+NovaLink shall implement commercially reasonable security controls consistent with
+ISO27001■aligned standards. IN WITNESS WHEREOF, the parties hereto have executed this
+Agreement as of the Effective Date.

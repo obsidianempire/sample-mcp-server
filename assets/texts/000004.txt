@@ -1,0 +1,21 @@
+NovaLink Cloud Solutions, Inc.
+Master Services Agreement
+Orion Logistics Network
+ 
+Master Services Agreement This Master Services Agreement (“Agreement”) is entered into on April 1,
+2025 between NovaLink Cloud Solutions, Inc. and Orion Logistics Network, a multinational
+transportation and supply■chain management company headquartered in São Paulo, Brazil. 1.
+Purpose.
+This Agreement establishes the terms and conditions under which NovaLink will provide software
+subscriptions, cloud services, professional services, and systems integration solutions to Customer
+over a multi■year period. 2. Term.
+The Agreement shall remain in effect until April 1, 2028 unless terminated earlier according to the
+provisions herein. 3. Governance.
+The parties shall conduct quarterly business reviews to evaluate service performance and roadmap
+alignment. Escalation for unresolved issues shall proceed from the Customer Success Manager to the
+Director of Services and then to the Vice President of Customer Experience. 4. Included Frameworks.
+The Agreement includes the Data Privacy Addendum (DPA), ISO27001■aligned Security Exhibit, and
+NovaLink’s standard uptime SLA. 5. Commercial Terms.
+Customer agrees to pay annualized service fees totaling $310,000 USD, billed on a Net■30 basis. The
+Agreement shall not auto■renew. IN WITNESS WHEREOF, both parties have executed this
+Agreement as of the Effective Date.

@@ -1,0 +1,17 @@
+NovaLink Cloud Solutions, Inc.
+Support & Maintenance Agreement
+StellarMed Diagnostics
+ 
+Support & Maintenance Agreement This Support & Maintenance Agreement (“Agreement”) is
+effective as of January 1, 2025 between NovaLink Cloud Solutions, Inc. and StellarMed
+Diagnostics, a medical diagnostics laboratory based in Singapore. 1. Services Provided.
+NovaLink shall provide comprehensive Gold■Level support for Customer’s deployed NovaLink
+applications, including bug remediation, quarterly health checks, and continuous security patching. 2.
+Priority Response.
+NovaLink shall provide a four■hour (4h) initial response for Priority 1 incidents and will use
+commercially reasonable efforts to achieve resolution within forty■eight (48) hours. 3. Fees.
+Customer shall pay an annual maintenance fee of $27,000 USD, payable on Net■15 terms. 4. Special
+Conditions.
+Customer shall be entitled to one hundred (100) hours of emergency engineering time and may
+participate in NovaLink’s confidential beta■feature program subject to NDA. The parties acknowledge
+that this Agreement is a binding commitment and constitutes the full understanding between them.

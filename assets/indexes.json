@@ -1,0 +1,22 @@
+{
+  "000001.pdf": {
+    "customer": "Acme Corp",
+    "invoice_amount": 6000,
+    "balance": 1200
+  },
+  "000002.pdf": {
+    "customer": "XYY",
+    "invoice_amount": 2000,
+    "balance": 0
+  },
+  "000003.pdf": {
+    "customer": "Beta LLC",
+    "invoice_amount": 7500,
+    "balance": 500
+  },
+  "000004.pdf": {
+    "customer": "Gamma Inc",
+    "invoice_amount": 4500,
+    "balance": 50
+  }
+}

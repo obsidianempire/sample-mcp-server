@@ -44,6 +44,10 @@ pip install -r AgentDeploy/requirements.txt
 
 6. Register the tool in Salesforce Agentforce
 ---------------------------------------------
+
+Note: Salesforce UI and available AgentForce menus vary by org. Some Developer Edition orgs do not expose a dedicated "Tools ▸ New Tool" workflow. If you do see **Setup ▸ Agentforce ▸ Tools ▸ New Tool**, follow the steps below. If not, use the alternate External Service + Agent Builder flow described after the primary steps.
+
+Primary (if you have the Tools UI):
 1. Navigate to **Setup ▸ Agentforce ▸ Tools ▸ New Tool**.
 2. Choose **Model Context Protocol**.
 3. Supply the command and environment values listed above.
@@ -76,6 +80,34 @@ pip install -r AgentDeploy/requirements.txt
    }
    ```
 5. Save and attach the tool to the desired agent under **Tools & Integrations**.
+
+Alternate (recommended when "Tools" is not visible):
+
+Many Developer Edition orgs should instead register your MCP endpoints using Salesforce's Named Credential + External Service model and then reference the External Service actions from Agent Builder. This flow is functionally equivalent and is the recommended path when the "Tools" UI is absent.
+
+A. Create a Named Credential
+- Setup → Security → Named Credentials → New (or Legacy New)
+- Label/Name: `ContentMCPServer`
+- URL: `https://your-render-app.onrender.com`
+- Identity Type: Named Principal
+- Authentication Protocol: No Authentication (for demo)
+
+B. Create an External Service
+- Setup → Integrations → External Services → New External Service
+- Service Name: `ContentMCPService`
+- Service Schema Source: From Endpoint (point at your server's OpenAPI/actions endpoint) or choose Manual Schema and paste a small OpenAPI snippet if Salesforce cannot fetch it.
+
+C. Create / configure your Agent and add the action
+- Setup → Agentforce Agents → New Agent (or open an existing agent in Agent Builder)
+- In Agent Builder, create a Topic (or edit an existing Topic) and add an Action:
+  - Add Action → API → External Services → `ContentMCPService` → select the search action (e.g., `searchContent`)
+  - Configure input parameters for `classes`, `status` (or `filters`/`customer_id`) as text inputs per your schema.
+
+Notes & troubleshooting
+- If External Service actions don't appear immediately in Agent Builder, wait 5–10 minutes for propagation, or try deactivating/reactivating the agent (Agent Builder locks edits while active).
+- Ensure your MCP server exposes the OpenAPI/actions endpoint and is reachable from Salesforce (public TLS certificate required). If Salesforce cannot fetch the OpenAPI, paste a minimal manual schema per the External Service creation form.
+- You must be a System Administrator to create Named Credentials and External Services.
+- See `docs/salesforce-agentforce-setup.md` for an expanded walkthrough and example manual OpenAPI schema.
 
 7. Test the integration
 -----------------------

@@ -1,0 +1,20 @@
+NovaLink Cloud Solutions, Inc.
+Software License Agreement
+Horizon Financial Partners
+ 
+Software License Agreement This Software License Agreement (“Agreement”) is made effective
+March 1, 2025 between NovaLink Cloud Solutions, Inc. and Horizon Financial Partners, a financial
+advisory and wealth■management firm located in Boston, Massachusetts. 1. License Grant.
+NovaLink hereby grants Customer a non■exclusive, non■transferable license to deploy and use the
+NovaLink Document Intelligence Engine on up to six (6) processors within Customer’s datacenter. 2.
+Restrictions.
+Customer may not redistribute, sublicense, or provide external access to the Licensed Software.
+Monthly usage is capped at two million (2,000,000) processed pages across all workloads. 3. Fees.
+Customer agrees to pay an annual licensing fee of $95,000 USD, billed at the beginning of each
+contract year. 4. Term.
+This Agreement shall remain in effect until March 1, 2027, unless terminated earlier according to the
+provisions herein. 5. Renewal.
+Customer may renew for additional one■year terms at then■current pricing. 6. Support.
+Customer shall receive NovaLink’s Standard Support Plan, including ticket■based assistance and
+annual patch updates. Both parties acknowledge that they have read, understood, and agreed to the
+terms listed above.

@@ -88,12 +88,22 @@ Follow the comprehensive setup guide: [docs/salesforce-agentforce-setup.md](docs
 - `POST /tools/call` - MCP-style tool calling
 - `GET /tools/list` - List available tools
 
+### Document & Index Retrieval (New)
+
+- `GET /api/v1/indexes` - List available index fields and example values for filtering
+- `POST /api/v1/search` - Search documents by index filters
+  - Request body: `{"filters": {"field": ["value", ">5000"]}}`
+  - Supports exact string matches and numeric comparisons (`>`, `<`)
+  - Example: `{"filters": {"invoice_amount": [">5000"], "customer": ["XYY"]}}`
+- `GET /api/v1/documents/{doc_id}` - Retrieve document content
+  - Query param `format=text` (default) or `format=raw` (PDF file)
+  - Text format returns extracted PDF content (cached under `assets/texts/`)
+- `GET /docs` - Swagger UI for interactive testing
+
 ### Salesforce External Service Endpoints
 
 - `GET /api/v1/actions` - OpenAPI schema for External Service registration
-- `POST /api/v1/actions/search_content` - Main search endpoint for AgentForce
-- `GET /api/v1/content` - REST-style search (GET parameters)
-- `POST /api/v1/content/search` - REST-style search (POST body)
+- `POST /api/v1/actions/search_content` - Main search endpoint for AgentForce (banking data)
 - `GET /api/health` - Service health for monitoring
 
 ### MCP Protocol (Optional)
@@ -101,13 +111,19 @@ Standard MCP JSON-RPC over stdin/stdout when run without PORT environment variab
 
 ## Sample Data
 
-The server includes sample banking data for demonstration:
+The server includes sample documents and indexed metadata for demonstration:
 
-- **Customer C123**: 3 services (autopayment, standing instruction, service link)
-- **Customer C456**: 1 closed service (Roth IRA)
-- **Customer C789**: 1 autopayment (GymPro)
+- **PDF Documents**: Located in `assets/` (000001.pdf - 000004.pdf)
+  - Each PDF has extracted text cached in `assets/texts/`
+  - Indexed with customer name, invoice amount, and balance
+- **Index Fields**:
+  - `customer`: Acme Corp, XYY, Beta LLC, Gamma Inc
+  - `invoice_amount`: numeric values (2000, 4500, 6000, 7500)
+  - `balance`: numeric values (0, 50, 500, 1200)
 
-### Service Types
+### Banking Service Types (Legacy Data)
+
+The server also retains sample banking data for AgentForce compatibility:
 
 - **standing_instruction**: Recurring transfers between accounts
 - **autopayment**: Scheduled payments to external companies
@@ -115,7 +131,30 @@ The server includes sample banking data for demonstration:
 
 ## Usage Examples
 
-### Test Queries for AgentForce
+### Test Queries for Content Retrieval Service
+
+```bash
+# List available index fields
+curl https://your-app.onrender.com/api/v1/indexes
+
+# Find customers with invoices > 5000
+curl -X POST https://your-app.onrender.com/api/v1/search \
+  -H "Content-Type: application/json" \
+  -d '{"filters": {"invoice_amount": [">5000"]}}'
+
+# Check customer XYY's documents
+curl -X POST https://your-app.onrender.com/api/v1/search \
+  -H "Content-Type: application/json" \
+  -d '{"filters": {"customer": ["XYY"]}}'
+
+# Retrieve extracted text from a document
+curl https://your-app.onrender.com/api/v1/documents/000001.pdf?format=text
+
+# Retrieve raw PDF
+curl https://your-app.onrender.com/api/v1/documents/000001.pdf?format=raw -o document.pdf
+```
+
+### Test Queries for AgentForce (Banking Services)
 
 ```
 "Show me autopayments for customer C123"
@@ -125,7 +164,7 @@ The server includes sample banking data for demonstration:
 "Find services for customer C999" (no results)
 ```
 
-### Direct API Calls
+### Direct API Calls (Legacy AgentForce Endpoint)
 
 ```bash
 # Test the search endpoint

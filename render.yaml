@@ -11,3 +11,9 @@ services:
         value: 10000
       - key: MCP_SERVER_MODE
         value: http
+      # HTTP mode enables REST API endpoints for Salesforce AgentForce integration:
+      # GET  /api/v1/indexes           - List available index fields and values
+      # POST /api/v1/search            - Search documents by index filters
+      # GET  /api/v1/documents/{id}    - Retrieve document content (text or raw PDF)
+      # POST /api/v1/actions/search_content - Legacy AgentForce search action
+      # GET  /docs                     - Swagger UI for interactive testing

@@ -346,6 +346,144 @@ if _runtime_mode in {"http", "rest"}:
             }
         }
 
+    # ------------------ Document / Index APIs for AgentForce ------------------
+    import pathlib
+    from fastapi.responses import FileResponse, PlainTextResponse
+    try:
+        from PyPDF2 import PdfReader
+    except Exception:
+        PdfReader = None
+
+    ASSETS_DIR = pathlib.Path(__file__).resolve().parents[1] / "assets"
+    TEXT_DIR = ASSETS_DIR / "texts"
+    INDEX_FILE = ASSETS_DIR / "indexes.json"
+
+    def ensure_text_dir():
+        TEXT_DIR.mkdir(parents=True, exist_ok=True)
+
+    def load_indexes():
+        if not INDEX_FILE.exists():
+            return {}
+        try:
+            return json.loads(INDEX_FILE.read_text(encoding='utf-8'))
+        except Exception:
+            return {}
+
+    def extract_text_from_pdf(pdf_path: pathlib.Path) -> str:
+        """Extract text from a PDF using PyPDF2 (falls back to empty string)."""
+        if PdfReader is None:
+            return ""
+
+        try:
+            reader = PdfReader(str(pdf_path))
+            text_parts = []
+            for page in reader.pages:
+                try:
+                    txt = page.extract_text() or ""
+                except Exception:
+                    txt = ""
+                text_parts.append(txt)
+            return "\n".join(text_parts)
+        except Exception:
+            return ""
+
+    @app.get("/api/v1/indexes")
+    def get_indexes():
+        """Return available index fields and example values. """
+        idx = load_indexes()
+        # build field->set(values)
+        fields = {}
+        for docid, meta in idx.items():
+            for k, v in meta.items():
+                fields.setdefault(k, set()).add(str(v))
+
+        return {
+            "success": True,
+            "count": len(idx),
+            "fields": {k: sorted(list(v)) for k, v in fields.items()}
+        }
+
+    class SearchIndexesRequest(BaseModel):
+        filters: Dict[str, List[str]]
+
+    @app.post("/api/v1/search")
+    def search_indexes(req: SearchIndexesRequest):
+        """Search documents by indexes. Request body: {"filters": {"customer": ["XYY"], "invoice_amount": [">5000"]}}"""
+        idx = load_indexes()
+        matches = []
+
+        # Simple matching: support exact matches and numeric comparisons for invoice_amount/balance
+        for docid, meta in idx.items():
+            ok = True
+            for key, vals in req.filters.items():
+                if key not in meta:
+                    ok = False
+                    break
+
+                # numeric comparison operator support when value starts with > or <
+                value = meta.get(key)
+                val_str = str(value)
+
+                # allow any of the provided vals to match
+                matched_any = False
+                for v in vals:
+                    if isinstance(value, (int, float)) and (v.startswith('>') or v.startswith('<')):
+                        try:
+                            cmp_val = float(v[1:])
+                            if v[0] == '>' and float(value) > cmp_val:
+                                matched_any = True
+                                break
+                            if v[0] == '<' and float(value) < cmp_val:
+                                matched_any = True
+                                break
+                        except Exception:
+                            continue
+                    else:
+                        # string equality (case-insensitive)
+                        if val_str.lower() == str(v).lower():
+                            matched_any = True
+                            break
+
+                if not matched_any:
+                    ok = False
+                    break
+
+            if ok:
+                matches.append(docid)
+
+        return {"success": True, "count": len(matches), "document_ids": matches}
+
+    @app.get("/api/v1/documents/{doc_id}")
+    def get_document(doc_id: str, format: Optional[str] = "text"):
+        """Return document content. format=raw (PDF) or text (default).
+        If text is requested and not already extracted, the server will extract and cache it under assets/texts/."""
+        pdf_path = ASSETS_DIR / f"{doc_id}"
+        # allow passing either with or without .pdf
+        if not pdf_path.exists():
+            if not pdf_path.suffix:
+                pdf_path = ASSETS_DIR / f"{doc_id}.pdf"
+
+        if not pdf_path.exists():
+            raise HTTPException(status_code=404, detail=f"Document '{doc_id}' not found in assets")
+
+        if format == "raw":
+            return FileResponse(str(pdf_path), media_type="application/pdf", filename=pdf_path.name)
+
+        # default: text
+        ensure_text_dir()
+        text_file = TEXT_DIR / f"{pdf_path.stem}.txt"
+        if text_file.exists():
+            return PlainTextResponse(text_file.read_text(encoding='utf-8'))
+
+        # extract and cache
+        extracted = extract_text_from_pdf(pdf_path)
+        try:
+            text_file.write_text(extracted, encoding='utf-8')
+        except Exception:
+            pass
+
+        return PlainTextResponse(extracted)
+
     if __name__ == "__main__":
         port = int(os.getenv("PORT", 10000))
         uvicorn.run(app, host="0.0.0.0", port=port)

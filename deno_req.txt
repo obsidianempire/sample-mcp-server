@@ -1,0 +1,24 @@
+This is a service that will be called from SalesForces AgentAgentForce. 
+This will simulate a content retrieval service, that the Agent will use to ask questions against the content from this service.
+
+This service needs to be able to allow the Agent to filter documennts based on indexes.
+
+There should be a REST API tto get the list of all available indexes that the user of the Agent can filter on.
+
+Another REST API for searching so the user can enter the index(es) and value(s) to help filter the documents.
+The search, should return one or more set of documentIDs.
+
+Another REST API, will be to return the document, based on the documentID. There should be an option to return the raw data or the text data. The default should be the text data.
+
+User of the agent will have example questions as below:
+- What customers have an invoice greater that 5000?
+- Does customer XYY have a balance?
+
+===
+
+Can you create the following:
+- The REST APIs that the Agent will be calling
+- The mock PDF documents are in the assets folder. The names of the files are the document IDs.
+- For the content retrieval, with the text option, convert the PDF to text. If better to keep a TEXt version as file, then do so.
+- Create the swagger page to test the Mock Service.
+- create a new MD file describing, in detail, how to configure the AgentForce to communicate to this service. This will be on the latest SalesForce development version.
