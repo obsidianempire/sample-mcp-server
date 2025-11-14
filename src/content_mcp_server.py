@@ -244,6 +244,7 @@ if _runtime_mode in {"http", "rest"}:
 
         return {"success": True, "count": len(matches), "document_ids": matches}
 
+
     @app.get("/api/v1/documents/{doc_id}")
     def get_document(doc_id: str, format: Optional[str] = "text"):
         """Return document content. format=raw (PDF) or text (default).
@@ -274,6 +275,27 @@ if _runtime_mode in {"http", "rest"}:
             pass
 
         return PlainTextResponse(extracted)
+
+    @app.get("/api/v1/documents/{doc_id}/json", response_model=dict)
+    def get_document_json(doc_id: str):
+        """Return document text content as JSON for Salesforce compatibility."""
+        pdf_path = ASSETS_DIR / f"{doc_id}"
+        if not pdf_path.exists():
+            if not pdf_path.suffix:
+                pdf_path = ASSETS_DIR / f"{doc_id}.pdf"
+        if not pdf_path.exists():
+            raise HTTPException(status_code=404, detail=f"Document '{doc_id}' not found in assets")
+        ensure_text_dir()
+        text_file = TEXT_DIR / f"{pdf_path.stem}.txt"
+        if text_file.exists():
+            content = text_file.read_text(encoding='utf-8')
+        else:
+            content = extract_text_from_pdf(pdf_path)
+            try:
+                text_file.write_text(content, encoding='utf-8')
+            except Exception:
+                pass
+        return {"doc_id": str(pdf_path.name), "content": content}
 
     if __name__ == "__main__":
         port = int(os.getenv("PORT", 10000))
