@@ -203,7 +203,7 @@ if _runtime_mode in {"http", "rest"}:
 
     @app.get("/api/v1/indexes")
     def get_indexes(maxcount: int = Query(default=9999, ge=1)):
-        """Return available index fields and example values."""
+        """Return available index fields"""
         idx = load_indexes()
 
         # Apply maxcount limit
@@ -211,14 +211,13 @@ if _runtime_mode in {"http", "rest"}:
 
         # build field->set(values)
         fields = {}
-        for docid, meta in limited_items:
+        for key, meta in limited_items:
             for k, v in meta.items():
                 fields.setdefault(k, set()).add(str(v))
-
         return {
             "success": True,
             "count": len(limited_items),
-            "fields": {k: sorted(list(v)) for k, v in fields.items()}
+            "fields": sorted(list(fields.keys()))
         }
 
     from pydantic import BaseModel
@@ -328,6 +327,18 @@ if _runtime_mode in {"http", "rest"}:
     if __name__ == "__main__":
         port = int(os.getenv("PORT", 10000))
         uvicorn.run(app, host="0.0.0.0", port=port)
+
+    # --- Salesforce-friendly alias ---
+    @app.get("/api/v1/document_json")
+    def get_document_json_alias(doc_id: str):
+        """
+        Alias endpoint for Salesforce External Services.
+        Same behavior as /api/v1/documents/{doc_id}/json,
+        but uses a query parameter so Salesforce exposes it
+        as an input in Agent Actions.
+        """
+        return get_document_json(doc_id)
+
 
 else:
     try:
