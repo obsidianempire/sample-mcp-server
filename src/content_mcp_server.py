@@ -18,6 +18,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from fastapi.params import Query
 from copy import deepcopy
+from pydantic import BaseModel
 
 TOOL_REGISTRY: Dict[str, Callable[..., Any]] = {}
 
@@ -30,7 +31,9 @@ def register_tool(func: Callable[..., Any]):
 
 mcp: Any | None = None
 
-
+class DocumentTextResponse(BaseModel):
+    doc_id: str
+    content: str  # this is the full document text
 
 # Determine desired runtime mode (HTTP/REST or MCP)
 _mode_env = os.getenv("MCP_SERVER_MODE")
@@ -61,9 +64,7 @@ if _runtime_mode in {"http", "rest"}:
         allow_headers=["*"],
     )
 
-    class DocumentTextResponse(BaseModel):
-        doc_id: str
-        content: str  # this is the full document text
+
 
     @app.get("/health")
     def health():
@@ -309,20 +310,13 @@ if _runtime_mode in {"http", "rest"}:
         as an input in Agent Actions.
         """
         return get_document_json(doc_id)
+    
+    
     if __name__ == "__main__":
         port = int(os.getenv("PORT", 10000))
         uvicorn.run(app, host="0.0.0.0", port=port)
 
-    # --- Salesforce-friendly alias ---
-    @app.get("/api/v1/document_json")
-    def get_document_json_alias(doc_id: str):
-        """
-        Alias endpoint for Salesforce External Services.
-        Same behavior as /api/v1/documents/{doc_id}/json,
-        but uses a query parameter so Salesforce exposes it
-        as an input in Agent Actions.
-        """
-        return get_document_json(doc_id)
+
 
 
 else:
