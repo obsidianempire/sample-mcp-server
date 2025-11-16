@@ -1,9 +1,12 @@
 
+
+
 # Agentforce Deployment Package
 
 ---
 
 ## 1. Package Contents
+
 This folder includes everything Salesforce needs to register your REST-hosted MCP service:
 - `AgentDeploy/register_agent.md` — this runbook for Salesforce admins.
 
@@ -14,8 +17,11 @@ This folder includes everything Salesforce needs to register your REST-hosted MC
 - The REST API lives at `https://mcp-sample-p525.onrender.com`, exposing endpoints for document and index retrieval:
     - `GET /api/v1/indexes` — List available index fields and values
     - `POST /api/v1/search` — Search documents by index filters (supports numeric comparisons)
-  - `GET /api/v1/documents/{doc_id}` — Retrieve document content (text or raw PDF)
-  - `GET /api/v1/documents/{doc_id}/json` — Retrieve document text content as JSON (Salesforce compatible)
+    - `GET /api/v1/documents/{doc_id}` — Retrieve document content (text or raw PDF)
+    - `GET /api/v1/documents/{doc_id}/json` — Retrieve document text content as JSON (Salesforce compatible)
+    - `GET /openapi.json` — OpenAPI schema for Salesforce External Service registration
+    - `GET /docs` — Swagger UI for interactive testing
+
 ---
 
 ## 6. Salesforce External Service Registration Steps (Recommended)
@@ -59,45 +65,26 @@ Response:
 ```
 
 ---
-    - `GET /openapi.json` — OpenAPI schema for Salesforce External Service registration
-    - `GET /docs` — Swagger UI for interactive testing
 
 
-
----
 
 ## 3. Validate the Hosted API
 
-Test the new endpoints from any environment that can reach the service:
 
 ```powershell
 # Health check
 curl https://mcp-sample-p525.onrender.com/health
 
 # List available index fields
-curl https://mcp-sample-p525.onrender.com/api/v1/indexes
-
-# Search for invoices > 5000
-curl -X POST https://mcp-sample-p525.onrender.com/api/v1/search ^
-  -H "Content-Type: application/json" ^
   -d "{\"filters\":{\"invoice_amount\":[\">5000\"]}}"
-
-# Retrieve document text
-curl https://mcp-sample-p525.onrender.com/api/v1/documents/000001.pdf?format=text
 
 # Retrieve raw PDF
 curl https://mcp-sample-p525.onrender.com/api/v1/documents/000001.pdf?format=raw
-
-# Swagger UI
 start https://mcp-sample-p525.onrender.com/docs
 ```
 
-Expect a 200 OK and JSON payload or file content for each request.
 
-
-
-
-
+---
 
 ---
 
@@ -105,43 +92,49 @@ Expect a 200 OK and JSON payload or file content for each request.
 
 > **Note:** Salesforce UI and available AgentForce menus vary by org. Some Developer Edition orgs do not expose a dedicated "Tools ▸ New Tool" workflow. If you do see **Setup ▸ Agentforce ▸ Tools ▸ New Tool**, follow the steps below. If not, use the alternate External Service + Agent Builder flow described after the primary steps.
 
+
 ### Primary (if you have the Tools UI):
+
 1. Navigate to **Setup ▸ Agentforce ▸ Tools ▸ New Tool**.
 2. Choose **Model Context Protocol**.
 3. Supply the command and environment values listed above.
 4. Use this tool contract (mirrors the hosted API):
-   ```json
-   {
-     "name": "content.search",
-     "description": "Fetches curated content records filtered by class and index values.",
-     "inputSchema": {
-       "type": "object",
-       "properties": {
-         "classes": {
-           "type": "array",
-           "items": { "type": "string" },
-           "description": "Target content classes (for example, standing_instruction)."
-         },
-         "filters": {
-           "type": "object",
-           "description": "Index filters keyed by index name (for example, status or customer_id)."
-         },
-         "limit": {
-           "type": "integer",
-           "minimum": 1,
-           "maximum": 200,
-           "default": 50
-         }
-       },
-       "required": ["classes"]
-     }
-   }
-   ```
+
+```json
+{
+  "name": "content.search",
+  "description": "Fetches curated content records filtered by class and index values.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "classes": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Target content classes (for example, standing_instruction)."
+      },
+      "filters": {
+        "type": "object",
+        "description": "Index filters keyed by index name (for example, status or customer_id)."
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 200,
+        "default": 50
+      }
+    },
+    "required": ["classes"]
+  }
+}
+```
+
 5. Save and attach the tool to the desired agent under **Tools & Integrations**.
+---
 
 
 
 ---
+
 
 ### Alternate (recommended when "Tools" is not visible):
 
@@ -162,16 +155,19 @@ Many Developer Edition orgs should instead register your REST endpoints using Sa
 **C. Create / configure your Agent and add the action**
 - Setup → Agentforce Agents → New Agent (or open an existing agent in Agent Builder)
 - In Agent Builder, create a Topic (or edit an existing Topic) and add an Action:
-    - Add Action → API → External Services → `ContentMCPService` → select the search action (e.g., `search`)
-    - Configure input parameters for `filters` (e.g., `customer`, `invoice_amount`) as text inputs per your schema.
+  - Add Action → API → External Services → `ContentMCPService` → select the search action (e.g., `search`)
+  - Configure input parameters for `filters` (e.g., `customer`, `invoice_amount`) as text inputs per your schema.
 
 ---
+
 
 **Notes & Troubleshooting**
 - If External Service actions don't appear immediately in Agent Builder, wait 5–10 minutes for propagation, or try deactivating/reactivating the agent (Agent Builder locks edits while active).
 - Ensure your MCP server exposes the OpenAPI endpoint and is reachable from Salesforce (public TLS certificate required). If Salesforce cannot fetch the OpenAPI, paste a minimal manual schema per the External Service creation form.
 - You must be a System Administrator to create Named Credentials and External Services.
 - See `docs/salesforce-agentforce-setup.md` for an expanded walkthrough and example manual OpenAPI schema.
+
+---
 
 
 ---

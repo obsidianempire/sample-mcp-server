@@ -16,6 +16,8 @@ import json
 import os
 from typing import Any, Callable, Dict, List, Optional
 
+from fastapi.params import Query
+
 TOOL_REGISTRY: Dict[str, Callable[..., Any]] = {}
 
 
@@ -178,18 +180,22 @@ if _runtime_mode in {"http", "rest"}:
             return ""
 
     @app.get("/api/v1/indexes")
-    def get_indexes():
-        """Return available index fields and example values. """
+    def get_indexes(maxcount: int = Query(default=9999, ge=1)):
+        """Return available index fields and example values."""
         idx = load_indexes()
+
+        # Apply maxcount limit
+        limited_items = list(idx.items())[:maxcount]
+
         # build field->set(values)
         fields = {}
-        for docid, meta in idx.items():
+        for docid, meta in limited_items:
             for k, v in meta.items():
                 fields.setdefault(k, set()).add(str(v))
 
         return {
             "success": True,
-            "count": len(idx),
+            "count": len(limited_items),
             "fields": {k: sorted(list(v)) for k, v in fields.items()}
         }
 
