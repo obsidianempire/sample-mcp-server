@@ -17,6 +17,7 @@ import os
 from typing import Any, Callable, Dict, List, Optional
 
 from fastapi.params import Query
+from copy import deepcopy
 
 TOOL_REGISTRY: Dict[str, Callable[..., Any]] = {}
 
@@ -64,6 +65,27 @@ if _runtime_mode in {"http", "rest"}:
     @app.get("/health")
     def health():
         return {"status": "ok", "message": "Content MCP Server is running in HTTP mode"}
+
+
+    @app.get("/openapi_salesforce.json")
+    def openapi_salesforce():
+        schema = deepcopy(app.openapi())
+        # Force spec version to 3.0.3 for Salesforce
+        schema["openapi"] = "3.0.3"
+
+        # Replace empty schemas {} with { "type": "object" }
+        def fix_schemas(node):
+            if isinstance(node, dict):
+                if "schema" in node and node["schema"] == {}:
+                    node["schema"] = {"type": "object"}
+                for v in node.values():
+                    fix_schemas(v)
+            elif isinstance(node, list):
+                for v in node:
+                    fix_schemas(v)
+
+        fix_schemas(schema)
+        return schema
 
     @app.get("/", response_class=HTMLResponse)
     def test_interface():
