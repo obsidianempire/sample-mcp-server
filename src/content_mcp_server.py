@@ -276,9 +276,12 @@ if _runtime_mode in {"http", "rest"}:
         return {"success": True, "count": len(matches), "document_ids": matches}
 
 
-    @app.get("/api/v1/documents/{doc_id}/json", response_model=DocumentTextResponse)
+    @app.get("/api/v1/documents/{doc_id}/json")
     def get_document_json(doc_id: str):
-        """Return document text content as JSON for Salesforce compatibility."""
+        """
+        Original endpoint – keep as-is for other clients.
+        Returns both doc_id and content.
+        """
         pdf_path = ASSETS_DIR / f"{doc_id}"
         if not pdf_path.exists():
             if not pdf_path.suffix:
@@ -297,20 +300,37 @@ if _runtime_mode in {"http", "rest"}:
             except Exception:
                 pass
 
-        return DocumentTextResponse(doc_id=str(pdf_path.name), content=content)
+        return {"doc_id": str(pdf_path.name), "content": content}
 
 
-    # --- Salesforce-friendly alias (QUERY PARAM) ---
-    @app.get("/api/v1/document_json", response_model=DocumentTextResponse)
-    def get_document_json_alias(doc_id: str):
+
+    # 🔹 Salesforce-friendly alias: return just the text as a string
+    @app.get("/api/v1/document_text", response_model=str)
+    def get_document_text(doc_id: str):
         """
         Alias endpoint for Salesforce External Services.
-        Same behavior as /api/v1/documents/{doc_id}/json,
-        but uses a query parameter so Salesforce exposes it
-        as an input in Agent Actions.
+        Returns ONLY the document text as a string so Agentforce
+        can safely use it as tool output.
         """
-        return get_document_json(doc_id)
-    
+        pdf_path = ASSETS_DIR / f"{doc_id}"
+        if not pdf_path.exists():
+            if not pdf_path.suffix:
+                pdf_path = ASSETS_DIR / f"{doc_id}.pdf"
+        if not pdf_path.exists():
+            raise HTTPException(status_code=404, detail=f"Document '{doc_id}' not found in assets")
+
+        ensure_text_dir()
+        text_file = TEXT_DIR / f"{pdf_path.stem}.txt"
+        if text_file.exists():
+            content = text_file.read_text(encoding="utf-8")
+        else:
+            content = extract_text_from_pdf(pdf_path)
+            try:
+                text_file.write_text(content, encoding="utf-8")
+            except Exception:
+                pass
+
+        return content  # <-- plain string
     
     if __name__ == "__main__":
         port = int(os.getenv("PORT", 10000))
