@@ -61,6 +61,9 @@ if _runtime_mode in {"http", "rest"}:
         allow_headers=["*"],
     )
 
+    class DocumentTextResponse(BaseModel):
+        doc_id: str
+        content: str  # this is the full document text
 
     @app.get("/health")
     def health():
@@ -272,38 +275,7 @@ if _runtime_mode in {"http", "rest"}:
         return {"success": True, "count": len(matches), "document_ids": matches}
 
 
-    @app.get("/api/v1/documents/{doc_id}")
-    def get_document(doc_id: str, format: Optional[str] = "text"):
-        """Return document content. format=raw (PDF) or text (default).
-        If text is requested and not already extracted, the server will extract and cache it under assets/texts/."""
-        pdf_path = ASSETS_DIR / f"{doc_id}"
-        # allow passing either with or without .pdf
-        if not pdf_path.exists():
-            if not pdf_path.suffix:
-                pdf_path = ASSETS_DIR / f"{doc_id}.pdf"
-
-        if not pdf_path.exists():
-            raise HTTPException(status_code=404, detail=f"Document '{doc_id}' not found in assets")
-
-        if format == "raw":
-            return FileResponse(str(pdf_path), media_type="application/pdf", filename=pdf_path.name)
-
-        # default: text
-        ensure_text_dir()
-        text_file = TEXT_DIR / f"{pdf_path.stem}.txt"
-        if text_file.exists():
-            return PlainTextResponse(text_file.read_text(encoding='utf-8'))
-
-        # extract and cache
-        extracted = extract_text_from_pdf(pdf_path)
-        try:
-            text_file.write_text(extracted, encoding='utf-8')
-        except Exception:
-            pass
-
-        return PlainTextResponse(extracted)
-
-    @app.get("/api/v1/documents/{doc_id}/json", response_model=dict)
+    @app.get("/api/v1/documents/{doc_id}/json", response_model=DocumentTextResponse)
     def get_document_json(doc_id: str):
         """Return document text content as JSON for Salesforce compatibility."""
         pdf_path = ASSETS_DIR / f"{doc_id}"
@@ -312,18 +284,31 @@ if _runtime_mode in {"http", "rest"}:
                 pdf_path = ASSETS_DIR / f"{doc_id}.pdf"
         if not pdf_path.exists():
             raise HTTPException(status_code=404, detail=f"Document '{doc_id}' not found in assets")
+
         ensure_text_dir()
         text_file = TEXT_DIR / f"{pdf_path.stem}.txt"
         if text_file.exists():
-            content = text_file.read_text(encoding='utf-8')
+            content = text_file.read_text(encoding="utf-8")
         else:
             content = extract_text_from_pdf(pdf_path)
             try:
-                text_file.write_text(content, encoding='utf-8')
+                text_file.write_text(content, encoding="utf-8")
             except Exception:
                 pass
-        return {"doc_id": str(pdf_path.name), "content": content}
 
+        return DocumentTextResponse(doc_id=str(pdf_path.name), content=content)
+
+
+    # --- Salesforce-friendly alias (QUERY PARAM) ---
+    @app.get("/api/v1/document_json", response_model=DocumentTextResponse)
+    def get_document_json_alias(doc_id: str):
+        """
+        Alias endpoint for Salesforce External Services.
+        Same behavior as /api/v1/documents/{doc_id}/json,
+        but uses a query parameter so Salesforce exposes it
+        as an input in Agent Actions.
+        """
+        return get_document_json(doc_id)
     if __name__ == "__main__":
         port = int(os.getenv("PORT", 10000))
         uvicorn.run(app, host="0.0.0.0", port=port)
