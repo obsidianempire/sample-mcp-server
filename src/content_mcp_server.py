@@ -283,6 +283,7 @@ if _runtime_mode in {"http", "rest"}:
         Returns both doc_id and content.
         """
         pdf_path = ASSETS_DIR / f"{doc_id}"
+        print(f"pdf_path: {pdf_path}")
         if not pdf_path.exists():
             if not pdf_path.suffix:
                 pdf_path = ASSETS_DIR / f"{doc_id}.pdf"
@@ -305,7 +306,7 @@ if _runtime_mode in {"http", "rest"}:
 
 
     # 🔹 Salesforce-friendly alias: return just the text as a string
-    @app.get("/api/v1/b", response_model=str)
+    @app.get("/api/v1/document_json", response_model=str)
     def get_document_text(doc_id: str):
         """
         Alias endpoint for Salesforce External Services.
