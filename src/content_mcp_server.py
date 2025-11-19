@@ -305,7 +305,7 @@ if _runtime_mode in {"http", "rest"}:
 
 
     # 🔹 Salesforce-friendly alias: return just the text as a string
-    @app.get("/api/v1/document_text", response_model=str)
+    @app.get("/api/v1/b", response_model=str)
     def get_document_text(doc_id: str):
         """
         Alias endpoint for Salesforce External Services.

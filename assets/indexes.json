@@ -1,20 +1,40 @@
 {
   "000001.pdf": {
+    "document_type": "Software License Agreement",
     "customer": "Acme Corp",
     "invoice_amount": 6000,
     "balance": 1200
   },
   "000002.pdf": {
+    "document_type": "Enterprise Subscription Agreement",
     "customer": "XYY",
     "invoice_amount": 2000,
     "balance": 0
   },
   "000003.pdf": {
+    "document_type": "Support & Maintenance Agreement",
     "customer": "Beta LLC",
     "invoice_amount": 7500,
     "balance": 500
   },
   "000004.pdf": {
+    "document_type": "Master Services Agreemen",
+    "customer": "Gamma Inc",
+    "invoice_amount": 4500,
+    "balance": 50
+  },
+  "000005.pdf": {
+    "document_type": "INVESTMENT ADVISORY AGREEMENT",
+    "customer": "Alpha Advisory LLC"
+  },
+  "000006.pdf": {
+    "document_type": "AUTO INSURANCE POLICY",
+    "customer": "John Doe",
+    "invoice_amount": 1200,
+    "balance": 50
+  },
+  "000007.pdf": {
+    "document_type": "LOAN AGREEMENT",
     "customer": "Gamma Inc",
     "invoice_amount": 4500,
     "balance": 50

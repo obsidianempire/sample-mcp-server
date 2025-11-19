@@ -1,0 +1,63 @@
+LOAN AGREEMENT
+Agreement Number: ACME-2021
+
+
+PARTIES:
+This Loan Agreement ("Agreement") is made between ACME Corporation ("Borrower") and Global Bank ("Lender") on January 1, 2021.
+
+RECITALS:
+WHEREAS, Borrower desires to obtain a loan from Lender under the terms set forth herein;
+WHEREAS, Lender agrees to provide such loan subject to the conditions contained in this Agreement.
+
+DEFINITIONS:
+"LIBOR" refers to the London Interbank Offered Rate.
+"Collateral" refers to assets pledged by Borrower.
+"Business Day" means any day other than Saturday, Sunday, or a day on which banks are authorized to close.
+
+
+SECTION 1: LOAN TERMS
+1.1 Principal Amount: $10,000,000.
+1.2 Interest Rate: Clause 3.1: Interest will adjust quarterly based on LIBOR + 2% margin.
+1.3 Payment Schedule: Monthly installments due on the 1st of each month.
+1.4 Late Payment: Any payment not received within 10 Business Days shall incur a penalty of 1% of the overdue amount.
+
+
+SECTION 2: EARLY REPAYMENT
+Clause 4.2: Early repayment is permitted without penalty if notice is given 30 days in advance.
+Clause 4.3: Partial prepayments allowed with proportional interest adjustment.
+Clause 4.4: Borrower must provide written confirmation of intent to prepay.
+
+
+SECTION 3: COLLATERAL
+Clause 5.1: Borrower pledges equipment valued at $1,000,000 as collateral.
+Clause 5.2: Collateral must be insured for full value.
+Clause 5.3: Borrower shall maintain collateral in good condition and provide quarterly reports.
+
+
+SECTION 4: REPRESENTATIONS AND WARRANTIES
+Borrower represents that all financial statements provided are accurate and complete.
+Borrower warrants compliance with all applicable laws.
+
+
+SECTION 5: COVENANTS
+Borrower shall maintain a minimum liquidity ratio of 1.5.
+Borrower shall not incur additional debt exceeding $2,000,000 without prior consent.
+
+
+SECTION 6: EVENTS OF DEFAULT
+Failure to pay any amount due within 30 days.
+Insolvency or bankruptcy of Borrower.
+Misrepresentation of material facts.
+
+
+SECTION 7: GOVERNING LAW
+This Agreement shall be governed by the laws of the State of New York.
+
+
+SECTION 8: DISPUTE RESOLUTION
+Any dispute shall be resolved through arbitration in New York City.
+
+
+APPENDIX A: CONTACT INFORMATION
+Global Bank Loan Department: loans@globalbank.com
+ACME Corp Finance Team: finance@acme.com
