@@ -14,13 +14,49 @@ This folder includes everything Salesforce needs to register your REST-hosted MC
 
 ## 2. Service Overview
 
-- The REST API lives at `https://mcp-sample-p525.onrender.com`, exposing endpoints for document and index retrieval:
+- The REST API lives at `https://mcp-sample-p525.onrender.com`, exposing endpoints for document and index retrieval, and external service integration:
     - `GET /api/v1/indexes` — List available index fields and values
     - `POST /api/v1/search` — Search documents by index filters (supports numeric comparisons)
     - `GET /api/v1/documents/{doc_id}` — Retrieve document content (text or raw PDF)
     - `GET /api/v1/documents/{doc_id}/json` — Retrieve document text content as JSON (Salesforce compatible)
+    - `POST /askme` — Proxy endpoint that forwards questions to external Mobius service (requires environment variables)
     - `GET /openapi.json` — OpenAPI schema for Salesforce External Service registration
     - `GET /docs` — Swagger UI for interactive testing
+
+---
+
+## 2.1 AskMe Endpoint Configuration
+
+The `/askme` endpoint requires the following environment variables to be set:
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `MOBIUS_SERVER` | Mobius service hostname | `mobius.example.com` |
+| `MOBIUS_PORT` | Mobius service port | `8443` |
+| `MOBIUS_USERNAME` | Username for Mobius authentication | `user@example.com` |
+| `MOBIUS_PASSWORD` | Password for Mobius authentication | `secure_password` |
+| `MOBIUS_REPOSITORY_ID` | Repository ID to use for Mobius requests | `repo_123` |
+
+### AskMe Request Format
+
+```json
+POST /askme
+{
+  "userQuery": "What is the policy coverage?",
+  "conversation": "optional_conversation_data_here"
+}
+```
+
+### AskMe Response Format
+
+```json
+{
+  "answer": "The policy provides collision coverage up to $50,000...",
+  "context": {
+    "conversation": "updated_conversation_data"
+  }
+}
+```
 
 ---
 

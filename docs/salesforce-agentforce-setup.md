@@ -898,6 +898,148 @@ wait
    Create trace flag → Test External Service → Check logs for errors
    ```
 
+## Step 9: Using the AskMe Endpoint (External Service Integration)
+
+### 9.1 Overview
+
+The `/askme` endpoint is a specialized REST API that proxies questions to an external Mobius service. This allows your AgentForce agent to leverage external question-answering capabilities while maintaining conversation context.
+
+### 9.2 Environment Variables Setup
+
+Before deploying the server, ensure these environment variables are configured:
+
+| Variable | Description | Where to Set |
+|----------|-------------|--------------|
+| `MOBIUS_SERVER` | Hostname of Mobius service | Render/AWS environment settings |
+| `MOBIUS_PORT` | Port number (typically 8443) | Render/AWS environment settings |
+| `MOBIUS_USERNAME` | Credentials for authentication | Render/AWS environment settings |
+| `MOBIUS_PASSWORD` | Credentials for authentication | Render/AWS environment settings |
+| `MOBIUS_REPOSITORY_ID` | Repository ID for queries | Render/AWS environment settings |
+
+**Setting in Render:**
+1. Go to your Render service dashboard
+2. Navigate to **Environment** tab
+3. Add the 5 variables listed above
+4. Redeploy the service to apply changes
+
+### 9.3 Using AskMe in Your Agent
+
+#### Creating an External Service for AskMe
+
+1. **Create Named Credential (if different from content service):**
+   ```
+   Setup → Security → Named Credentials → Legacy → New Legacy
+   ```
+   - **Label**: `MobiusAskMe`
+   - **URL**: Your MCP server URL (e.g., `https://your-app.onrender.com`)
+   - **Authentication Protocol**: **No Authentication**
+
+2. **Create External Service:**
+   ```
+   Setup → Integrations → External Services → New External Service
+   ```
+   - **Service Name**: `AskMeService`
+   - **Service Schema Source**: **Manual Schema**
+   - **Named Credential**: `MobiusAskMe`
+   - **OpenAPI Schema**:
+   ```yaml
+   openapi: 3.0.0
+   info:
+     title: AskMe Service
+     version: 1.0.0
+   servers:
+     - url: https://your-app.onrender.com
+   paths:
+     /askme:
+       post:
+         operationId: askMe
+         summary: Ask a question and get an answer with conversation context
+         requestBody:
+           required: true
+           content:
+             application/json:
+               schema:
+                 type: object
+                 required:
+                   - userQuery
+                 properties:
+                   userQuery:
+                     type: string
+                     description: The question to ask
+                   conversation:
+                     type: string
+                     description: Optional conversation history for context
+         responses:
+           '200':
+             description: Successful response
+             content:
+               application/json:
+                 schema:
+                   type: object
+                   properties:
+                     answer:
+                       type: string
+                       description: The answer to the user's question
+                     context:
+                       type: object
+                       properties:
+                         conversation:
+                           type: string
+                           description: Updated conversation context
+           '500':
+             description: Server error (check environment variables)
+           '504':
+             description: Mobius service timeout
+   ```
+
+3. **Add to Agent in Agent Builder:**
+   - Open your Agent
+   - Go to **Topics** tab
+   - Create or edit a topic
+   - Click **Add Action** → **API** → **External Services** → `AskMeService` → `askMe`
+   - Map inputs:
+     - `userQuery`: Input from user or previous action result
+     - `conversation`: Use a variable to track conversation state
+
+#### 9.4 Example Agent Topic Configuration
+
+```
+Topic: "Answer General Questions"
+Condition: User asks questions not covered by other topics
+
+Actions:
+1. Ask Me Action:
+   - Input: userQuery = "{user message}"
+   - Input: conversation = "{stored conversation variable}"
+   - Store conversation output in a variable for future turns
+   
+2. Send Response:
+   - Output: "Answer from Mobius: {ask me action result.answer}"
+```
+
+### 9.5 Troubleshooting AskMe
+
+**Issue: "Missing required environment variables"**
+- Verify all 5 MOBIUS_* environment variables are set in Render/AWS
+- Restart/redeploy the service after adding variables
+- Check that variable names are exactly as listed (case-sensitive)
+
+**Issue: "Failed to connect to Mobius service"**
+- Verify `MOBIUS_SERVER` and `MOBIUS_PORT` are correct
+- Check network connectivity from your deployment environment to Mobius server
+- Ensure Mobius service is running and accessible
+- Verify SSL certificate is valid (if using HTTPS)
+
+**Issue: "Request timed out"**
+- Increase timeout handling in your topic logic
+- Check Mobius service response time
+- Verify network latency
+
+**Issue: "Invalid response from Mobius service"**
+- Verify the response format matches expected JSON structure
+- Check that Mobius service returns `answer` and `context.conversation` fields
+- Review server logs for parsing errors
+
 ## Step 10: Next Steps and Enhancements
 
 ### 10.1 Immediate Improvements

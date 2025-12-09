@@ -19,6 +19,8 @@ from typing import Any, Callable, Dict, List, Optional
 from fastapi.params import Query
 from copy import deepcopy
 from pydantic import BaseModel
+import requests
+from requests.auth import HTTPBasicAuth
 
 TOOL_REGISTRY: Dict[str, Callable[..., Any]] = {}
 
@@ -34,6 +36,14 @@ mcp: Any | None = None
 class DocumentTextResponse(BaseModel):
     doc_id: str
     content: str  # this is the full document text
+
+class AskMeRequest(BaseModel):
+    userQuery: str
+    conversation: Optional[str] = ""
+
+class AskMeResponse(BaseModel):
+    answer: str
+    context: Dict[str, Any]
 
 # Determine desired runtime mode (HTTP/REST or MCP)
 _mode_env = os.getenv("MCP_SERVER_MODE")
@@ -161,6 +171,120 @@ if _runtime_mode in {"http", "rest"}:
             "version": "0.1.0",
             "capabilities": ["mcp", "rest-api", "salesforce-integration"]
         }
+
+    # AskMe API endpoint for external service integration
+    @app.post("/askme", response_model=AskMeResponse)
+    def ask_me(req: AskMeRequest):
+        """
+        Proxy endpoint that forwards questions to an external Mobius service.
+        
+        Environment variables required:
+        - MOBIUS_SERVER: The Mobius server hostname
+        - MOBIUS_PORT: The Mobius server port
+        - MOBIUS_USERNAME: Username for Mobius authentication
+        - MOBIUS_PASSWORD: Password for Mobius authentication
+        - MOBIUS_REPOSITORY_ID: Repository ID for Mobius service
+        """
+        # Get configuration from environment variables
+        mobius_server = os.getenv("MOBIUS_SERVER")
+        mobius_port = os.getenv("MOBIUS_PORT")
+        mobius_username = os.getenv("MOBIUS_USERNAME")
+        mobius_password = os.getenv("MOBIUS_PASSWORD")
+        mobius_repo_id = os.getenv("MOBIUS_REPOSITORY_ID")
+        
+        # Validate required environment variables
+        missing_vars = []
+        if not mobius_server:
+            missing_vars.append("MOBIUS_SERVER")
+        if not mobius_port:
+            missing_vars.append("MOBIUS_PORT")
+        if not mobius_username:
+            missing_vars.append("MOBIUS_USERNAME")
+        if not mobius_password:
+            missing_vars.append("MOBIUS_PASSWORD")
+        if not mobius_repo_id:
+            missing_vars.append("MOBIUS_REPOSITORY_ID")
+        
+        if missing_vars:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Missing required environment variables: {', '.join(missing_vars)}"
+            )
+        
+        # Build the Mobius service URL
+        mobius_url = f"https://{mobius_server}:{mobius_port}/mobius/rest/conversations"
+        
+        # Build the request payload
+        payload = {
+            "userQuery": req.userQuery,
+            "documentIDs": [],
+            "repositories": [
+                {"id": mobius_repo_id}
+            ],
+            "context": {
+                "conversation": req.conversation or ""
+            }
+        }
+        
+        # Set up headers
+        headers = {
+            "Content-Type": "application/vnd.conversation-request.v1+json",
+            "Accept": "application/vnd.conversation-response.v1+json"
+        }
+        
+        try:
+            # Make the request to Mobius service with basic authentication
+            response = requests.post(
+                mobius_url,
+                json=payload,
+                headers=headers,
+                auth=HTTPBasicAuth(mobius_username, mobius_password),
+                timeout=30
+            )
+            
+            # Raise exception for bad status codes
+            response.raise_for_status()
+            
+            # Parse the response
+            mobius_response = response.json()
+            
+            # Extract answer and conversation data from the response
+            answer = mobius_response.get("answer", "")
+            conversation_data = mobius_response.get("context", {}).get("conversation", "")
+            
+            # Return in the expected format
+            return AskMeResponse(
+                answer=answer,
+                context={
+                    "conversation": conversation_data
+                }
+            )
+            
+        except requests.exceptions.Timeout:
+            raise HTTPException(
+                status_code=504,
+                detail="Mobius service request timed out"
+            )
+        except requests.exceptions.ConnectionError as e:
+            raise HTTPException(
+                status_code=503,
+                detail=f"Failed to connect to Mobius service: {str(e)}"
+            )
+        except requests.exceptions.HTTPError as e:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Mobius service returned an error: {str(e)}"
+            )
+        except ValueError as e:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Invalid response from Mobius service: {str(e)}"
+            )
+        except Exception as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error communicating with Mobius service: {str(e)}"
+            )
 
     # OpenAPI schema endpoint for Salesforce External Service registration
 
