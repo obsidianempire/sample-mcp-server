@@ -185,7 +185,10 @@ if _runtime_mode in {"http", "rest"}:
         - MOBIUS_PASSWORD: Password for Mobius authentication
         - MOBIUS_REPOSITORY_ID: Repository ID for Mobius service
         - MOBIUS_CERT_PATH: (Optional) Path to SSL certificate file for self-signed certificates
+        - MOBIUS_CERT_CONTENT: (Optional) SSL certificate content as a string (alternative to MOBIUS_CERT_PATH)
         """
+        import tempfile
+        
         # Get configuration from environment variables
         mobius_server = os.getenv("MOBIUS_SERVER")
         mobius_port = os.getenv("MOBIUS_PORT")
@@ -193,6 +196,7 @@ if _runtime_mode in {"http", "rest"}:
         mobius_password = os.getenv("MOBIUS_PASSWORD")
         mobius_repo_id = os.getenv("MOBIUS_REPOSITORY_ID")
         mobius_cert_path = os.getenv("MOBIUS_CERT_PATH")
+        mobius_cert_content = os.getenv("MOBIUS_CERT_CONTENT")
         
         # Validate required environment variables
         missing_vars = []
@@ -235,68 +239,93 @@ if _runtime_mode in {"http", "rest"}:
         }
         
         # Determine SSL verification setting
-        # If MOBIUS_CERT_PATH is provided, use it; otherwise use True for standard verification
-        ssl_verify = mobius_cert_path if mobius_cert_path else True
+        ssl_verify = True  # Default to standard verification
+        temp_cert_file = None
         
         try:
-            # Make the request to Mobius service with basic authentication
-            response = requests.post(
-                mobius_url,
-                json=payload,
-                headers=headers,
-                auth=HTTPBasicAuth(mobius_username, mobius_password),
-                verify=ssl_verify,
-                timeout=30
-            )
+            # If certificate content is provided, write it to a temporary file
+            if mobius_cert_content:
+                temp_cert = tempfile.NamedTemporaryFile(mode='w', suffix='.pem', delete=False)
+                temp_cert.write(mobius_cert_content)
+                temp_cert.close()
+                ssl_verify = temp_cert.name
+                temp_cert_file = temp_cert.name
+            # Otherwise, if certificate path is provided, use it
+            elif mobius_cert_path:
+                if os.path.exists(mobius_cert_path):
+                    ssl_verify = mobius_cert_path
+                else:
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"Certificate file not found at path: {mobius_cert_path}"
+                    )
             
-            # Raise exception for bad status codes
-            response.raise_for_status()
-            
-            # Parse the response
-            mobius_response = response.json()
-            
-            # Extract answer and conversation data from the response
-            answer = mobius_response.get("answer", "")
-            conversation_data = mobius_response.get("context", {}).get("conversation", "")
-            
-            # Return in the expected format
-            return AskMeResponse(
-                answer=answer,
-                context={
-                    "conversation": conversation_data
-                }
-            )
-            
-        except requests.exceptions.Timeout:
-            raise HTTPException(
-                status_code=504,
-                detail="Mobius service request timed out"
-            )
-        except requests.exceptions.SSLError as e:
-            raise HTTPException(
-                status_code=503,
-                detail=f"SSL certificate verification failed. Verify MOBIUS_CERT_PATH is set correctly or the certificate is valid. Error: {str(e)}"
-            )
-        except requests.exceptions.ConnectionError as e:
-            raise HTTPException(
-                status_code=503,
-                detail=f"Failed to connect to Mobius service: {str(e)}"
-            )
-        except requests.exceptions.HTTPError as e:
-            raise HTTPException(
-                status_code=502,
-                detail=f"Mobius service returned an error: {str(e)}"
-            )
-        except ValueError as e:
-            raise HTTPException(
-                status_code=502,
-                detail=f"Invalid response from Mobius service: {str(e)}"
-            )
-        except Exception as e:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Error communicating with Mobius service: {str(e)}"
-            )
+            try:
+                # Make the request to Mobius service with basic authentication
+                response = requests.post(
+                    mobius_url,
+                    json=payload,
+                    headers=headers,
+                    auth=HTTPBasicAuth(mobius_username, mobius_password),
+                    verify=ssl_verify,
+                    timeout=30
+                )
+                
+                # Raise exception for bad status codes
+                response.raise_for_status()
+                
+                # Parse the response
+                mobius_response = response.json()
+                
+                # Extract answer and conversation data from the response
+                answer = mobius_response.get("answer", "")
+                conversation_data = mobius_response.get("context", {}).get("conversation", "")
+                
+                # Return in the expected format
+                return AskMeResponse(
+                    answer=answer,
+                    context={
+                        "conversation": conversation_data
+                    }
+                )
+                
+            except requests.exceptions.Timeout:
+                raise HTTPException(
+                    status_code=504,
+                    detail="Mobius service request timed out"
+                )
+            except requests.exceptions.SSLError as e:
+                raise HTTPException(
+                    status_code=503,
+                    detail=f"SSL certificate verification failed. Verify MOBIUS_CERT_PATH or MOBIUS_CERT_CONTENT is set correctly. Error: {str(e)}"
+                )
+            except requests.exceptions.ConnectionError as e:
+                raise HTTPException(
+                    status_code=503,
+                    detail=f"Failed to connect to Mobius service: {str(e)}"
+                )
+            except requests.exceptions.HTTPError as e:
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Mobius service returned an error: {str(e)}"
+                )
+            except ValueError as e:
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Invalid response from Mobius service: {str(e)}"
+                )
+            except Exception as e:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Error communicating with Mobius service: {str(e)}"
+                )
+        finally:
+            # Clean up temporary certificate file if created
+            if temp_cert_file and os.path.exists(temp_cert_file):
+                try:
+                    os.unlink(temp_cert_file)
+                except Exception:
+                    pass
 
     # OpenAPI schema endpoint for Salesforce External Service registration
 

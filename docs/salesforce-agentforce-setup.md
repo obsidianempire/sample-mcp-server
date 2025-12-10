@@ -915,7 +915,8 @@ Before deploying the server, ensure these environment variables are configured:
 | `MOBIUS_USERNAME` | Credentials for authentication | Render/AWS environment settings |
 | `MOBIUS_PASSWORD` | Credentials for authentication | Render/AWS environment settings |
 | `MOBIUS_REPOSITORY_ID` | Repository ID for queries | Render/AWS environment settings |
-| `MOBIUS_CERT_PATH` | (Optional) Path to SSL certificate file for self-signed certificates | Render/AWS environment settings |
+| `MOBIUS_CERT_CONTENT` | (Optional) SSL certificate content as a string (recommended for self-signed certs) | Render/AWS environment settings |
+| `MOBIUS_CERT_PATH` | (Optional) Path to SSL certificate file | Render/AWS environment settings |
 
 **Setting in Render:**
 1. Go to your Render service dashboard
@@ -925,9 +926,13 @@ Before deploying the server, ensure these environment variables are configured:
 
 #### 9.2.1 SSL Certificate Setup (For Self-Signed Certificates)
 
-If your Mobius service uses a self-signed SSL certificate, you need to provide the certificate to your application:
+If your Mobius service uses a self-signed SSL certificate, you have two options:
 
-**Step 1: Extract the Certificate from Mobius Service**
+**Option A: Use Certificate Content (Recommended for Render)**
+
+This approach is easiest for cloud deployments as it doesn't require file management.
+
+**Step 1: Extract the Certificate Content**
 
 Run this command on your local machine or from a terminal with access to the Mobius server:
 
@@ -940,7 +945,40 @@ Example:
 openssl s_client -connect services-us-virginia-m-1.skytap.com:9846 -showcerts < /dev/null | openssl x509 -outform PEM > mobius-cert.pem
 ```
 
-This creates a `mobius-cert.pem` file containing the certificate.
+**Step 2: View the Certificate Content**
+
+```bash
+cat mobius-cert.pem
+```
+
+Copy the entire certificate text (including `-----BEGIN CERTIFICATE-----` and `-----END CERTIFICATE-----` lines).
+
+**Step 3: Set Environment Variable in Render**
+
+In your Render service dashboard:
+1. Navigate to **Environment** tab
+2. Click **Add Environment Variable**
+3. Set:
+   - **Key**: `MOBIUS_CERT_CONTENT`
+   - **Value**: Paste the entire certificate content from Step 2
+4. Redeploy the service
+
+**Advantages:**
+- No file deployment issues
+- Easy to update in cloud environments
+- No .gitignore or file tracking concerns
+
+---
+
+**Option B: Use Certificate File Path**
+
+This approach requires the certificate to be deployed with your application.
+
+**Step 1: Extract the Certificate**
+
+```bash
+openssl s_client -connect <MOBIUS_SERVER>:<MOBIUS_PORT> -showcerts < /dev/null | openssl x509 -outform PEM > mobius-cert.pem
+```
 
 **Step 2: Add Certificate to Your Repository**
 
@@ -954,10 +992,11 @@ This creates a `mobius-cert.pem` file containing the certificate.
    cp mobius-cert.pem certs/
    ```
 
-3. Commit the certificate file to your repository:
+3. Ensure it's in git (not in .gitignore):
    ```bash
    git add certs/mobius-cert.pem
    git commit -m "Add Mobius service SSL certificate"
+   git push
    ```
 
 **Step 3: Set Environment Variable in Render**
@@ -970,20 +1009,23 @@ In your Render service dashboard:
    ```
 3. Redeploy the service
 
+**Advantages:**
+- Certificate is version-controlled
+- Clear audit trail
+- Easy to rotate with git history
+
+---
+
 **Troubleshooting SSL Certificate Issues:**
 
-- **Error: "SSL: CERTIFICATE_VERIFY_FAILED"** - Certificate path is incorrect or doesn't exist
-  - Verify `MOBIUS_CERT_PATH` matches the actual location in your deployment
-  - Ensure the certificate file was deployed with your application
-  
-- **Error: "certificate verify failed: self-signed certificate"** - Certificate not provided
-  - Make sure `MOBIUS_CERT_PATH` environment variable is set
-  - Verify the certificate file exists in the specified path
-  
-- **Error: "Max retries exceeded"** - SSL verification failed even with certificate
-  - Extract the certificate again (it may have changed)
-  - Verify the certificate belongs to the correct Mobius server
-  - Check that the certificate hasn't expired
+| Error | Cause | Solution |
+|-------|-------|----------|
+| "SSL: CERTIFICATE_VERIFY_FAILED" | Certificate not provided or incorrect | Set either `MOBIUS_CERT_CONTENT` or `MOBIUS_CERT_PATH` |
+| "Could not find a suitable TLS CA certificate bundle" | Certificate file path doesn't exist at deployment | Use Option A (MOBIUS_CERT_CONTENT) or ensure git commits the file |
+| "certificate verify failed: self-signed certificate" | Certificate not recognized | Verify the certificate matches your Mobius server |
+| "Max retries exceeded" | SSL verification failed even with certificate | Re-extract the certificate, it may have changed |
+
+**Recommended: Use Option A (MOBIUS_CERT_CONTENT)** for Render deployments as it's simpler and more reliable.
 
 ### 9.3 Using AskMe in Your Agent
 
