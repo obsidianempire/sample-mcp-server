@@ -184,6 +184,7 @@ if _runtime_mode in {"http", "rest"}:
         - MOBIUS_USERNAME: Username for Mobius authentication
         - MOBIUS_PASSWORD: Password for Mobius authentication
         - MOBIUS_REPOSITORY_ID: Repository ID for Mobius service
+        - MOBIUS_CERT_PATH: (Optional) Path to SSL certificate file for self-signed certificates
         """
         # Get configuration from environment variables
         mobius_server = os.getenv("MOBIUS_SERVER")
@@ -191,6 +192,7 @@ if _runtime_mode in {"http", "rest"}:
         mobius_username = os.getenv("MOBIUS_USERNAME")
         mobius_password = os.getenv("MOBIUS_PASSWORD")
         mobius_repo_id = os.getenv("MOBIUS_REPOSITORY_ID")
+        mobius_cert_path = os.getenv("MOBIUS_CERT_PATH")
         
         # Validate required environment variables
         missing_vars = []
@@ -232,6 +234,10 @@ if _runtime_mode in {"http", "rest"}:
             "Accept": "application/vnd.conversation-response.v1+json"
         }
         
+        # Determine SSL verification setting
+        # If MOBIUS_CERT_PATH is provided, use it; otherwise use True for standard verification
+        ssl_verify = mobius_cert_path if mobius_cert_path else True
+        
         try:
             # Make the request to Mobius service with basic authentication
             response = requests.post(
@@ -239,6 +245,7 @@ if _runtime_mode in {"http", "rest"}:
                 json=payload,
                 headers=headers,
                 auth=HTTPBasicAuth(mobius_username, mobius_password),
+                verify=ssl_verify,
                 timeout=30
             )
             
@@ -264,6 +271,11 @@ if _runtime_mode in {"http", "rest"}:
             raise HTTPException(
                 status_code=504,
                 detail="Mobius service request timed out"
+            )
+        except requests.exceptions.SSLError as e:
+            raise HTTPException(
+                status_code=503,
+                detail=f"SSL certificate verification failed. Verify MOBIUS_CERT_PATH is set correctly or the certificate is valid. Error: {str(e)}"
             )
         except requests.exceptions.ConnectionError as e:
             raise HTTPException(
