@@ -14,6 +14,7 @@ MCP_SERVER_MODE=http PORT=10000 python src/content_mcp_server.py
 import inspect
 import json
 import os
+import base64
 from typing import Any, Callable, Dict, List, Optional
 
 from fastapi.params import Query
@@ -57,7 +58,7 @@ else:
 # Check if running in HTTP mode for Salesforce integration
 if _runtime_mode in {"http", "rest"}:
     # HTTP mode for cloud deployment
-    from fastapi import FastAPI, HTTPException
+    from fastapi import FastAPI, HTTPException, Request
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import HTMLResponse
     import uvicorn
@@ -174,26 +175,52 @@ if _runtime_mode in {"http", "rest"}:
 
     # AskMe API endpoint for external service integration
     @app.post("/askme", response_model=AskMeResponse)
-    def ask_me(req: AskMeRequest):
+    def ask_me(req: AskMeRequest, request: Request):
         """
         Proxy endpoint that forwards questions to an external Mobius service.
+        
+        Request requires:
+        - Authorization header with Basic Auth (username:password)
+        - Body with userQuery and optional conversation
         
         Environment variables required:
         - MOBIUS_SERVER: The Mobius server hostname
         - MOBIUS_PORT: The Mobius server port
-        - MOBIUS_USERNAME: Username for Mobius authentication
-        - MOBIUS_PASSWORD: Password for Mobius authentication
         - MOBIUS_REPOSITORY_ID: Repository ID for Mobius service
-        - MOBIUS_CERT_PATH: (Optional) Path to SSL certificate file for self-signed certificates
-        - MOBIUS_CERT_CONTENT: (Optional) SSL certificate content as a string (alternative to MOBIUS_CERT_PATH)
+        - MOBIUS_CERT_CONTENT: (Optional) SSL certificate content as a string (for self-signed certs)
+        - MOBIUS_CERT_PATH: (Optional) Path to SSL certificate file
         """
         import tempfile
+        
+        # Extract credentials from Authorization header
+        auth_header = request.headers.get("Authorization")
+        if not auth_header:
+            raise HTTPException(
+                status_code=401,
+                detail="Missing Authorization header. Use Basic Auth with Mobius credentials."
+            )
+        
+        # Parse Basic Auth header
+        if not auth_header.startswith("Basic "):
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid Authorization header. Use Basic Auth format: 'Basic base64(username:password)'"
+            )
+        
+        try:
+            # Decode the base64 credentials
+            encoded_credentials = auth_header[6:]  # Remove "Basic " prefix
+            decoded = base64.b64decode(encoded_credentials).decode("utf-8")
+            mobius_username, mobius_password = decoded.split(":", 1)
+        except (ValueError, UnicodeDecodeError) as e:
+            raise HTTPException(
+                status_code=401,
+                detail=f"Invalid Authorization header format: {str(e)}"
+            )
         
         # Get configuration from environment variables
         mobius_server = os.getenv("MOBIUS_SERVER")
         mobius_port = os.getenv("MOBIUS_PORT")
-        mobius_username = os.getenv("MOBIUS_USERNAME")
-        mobius_password = os.getenv("MOBIUS_PASSWORD")
         mobius_repo_id = os.getenv("MOBIUS_REPOSITORY_ID")
         mobius_cert_path = os.getenv("MOBIUS_CERT_PATH")
         mobius_cert_content = os.getenv("MOBIUS_CERT_CONTENT")
@@ -204,10 +231,6 @@ if _runtime_mode in {"http", "rest"}:
             missing_vars.append("MOBIUS_SERVER")
         if not mobius_port:
             missing_vars.append("MOBIUS_PORT")
-        if not mobius_username:
-            missing_vars.append("MOBIUS_USERNAME")
-        if not mobius_password:
-            missing_vars.append("MOBIUS_PASSWORD")
         if not mobius_repo_id:
             missing_vars.append("MOBIUS_REPOSITORY_ID")
         
@@ -261,7 +284,7 @@ if _runtime_mode in {"http", "rest"}:
                     )
             
             try:
-                # Make the request to Mobius service with basic authentication
+                # Make the request to Mobius service with credentials from Authorization header
                 response = requests.post(
                     mobius_url,
                     json=payload,
@@ -297,7 +320,7 @@ if _runtime_mode in {"http", "rest"}:
             except requests.exceptions.SSLError as e:
                 raise HTTPException(
                     status_code=503,
-                    detail=f"SSL certificate verification failed. Verify MOBIUS_CERT_PATH or MOBIUS_CERT_CONTENT is set correctly. Error: {str(e)}"
+                    detail=f"SSL certificate verification failed. Verify MOBIUS_CERT_CONTENT or MOBIUS_CERT_PATH is set correctly. Error: {str(e)}"
                 )
             except requests.exceptions.ConnectionError as e:
                 raise HTTPException(

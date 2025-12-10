@@ -906,14 +906,14 @@ The `/askme` endpoint is a specialized REST API that proxies questions to an ext
 
 ### 9.2 Environment Variables Setup
 
-Before deploying the server, ensure these environment variables are configured:
+The `/askme` endpoint requires only service configuration in environment variables. **Credentials are passed via HTTP Basic Auth header** in each request.
+
+Required environment variables:
 
 | Variable | Description | Where to Set |
 |----------|-------------|--------------|
 | `MOBIUS_SERVER` | Hostname of Mobius service | Render/AWS environment settings |
 | `MOBIUS_PORT` | Port number (typically 8443) | Render/AWS environment settings |
-| `MOBIUS_USERNAME` | Credentials for authentication | Render/AWS environment settings |
-| `MOBIUS_PASSWORD` | Credentials for authentication | Render/AWS environment settings |
 | `MOBIUS_REPOSITORY_ID` | Repository ID for queries | Render/AWS environment settings |
 | `MOBIUS_CERT_CONTENT` | (Optional) SSL certificate content as a string (recommended for self-signed certs) | Render/AWS environment settings |
 | `MOBIUS_CERT_PATH` | (Optional) Path to SSL certificate file | Render/AWS environment settings |
@@ -923,6 +923,8 @@ Before deploying the server, ensure these environment variables are configured:
 2. Navigate to **Environment** tab
 3. Add the variables listed above
 4. Redeploy the service to apply changes
+
+**Note:** Credentials are NOT stored in environment variables. They are passed via HTTP Basic Authorization header in each `/askme` request, allowing different users to authenticate with their own credentials.
 
 #### 9.2.1 SSL Certificate Setup (For Self-Signed Certificates)
 
@@ -1059,6 +1061,8 @@ In your Render service dashboard:
        post:
          operationId: askMe
          summary: Ask a question and get an answer with conversation context
+         security:
+           - basicAuth: []
          requestBody:
            required: true
            content:
@@ -1091,10 +1095,24 @@ In your Render service dashboard:
                          conversation:
                            type: string
                            description: Updated conversation context
+           '401':
+             description: Missing or invalid Authorization header
+           '400':
+             description: Missing required fields
            '500':
              description: Server error (check environment variables)
+           '502':
+             description: Mobius service error
+           '503':
+             description: Connection error or SSL issue
            '504':
              description: Mobius service timeout
+   components:
+     securitySchemes:
+       basicAuth:
+         type: http
+         scheme: basic
+         description: HTTP Basic Authentication with Mobius username and password
    ```
 
 3. **Add to Agent in Agent Builder:**
@@ -1105,6 +1123,7 @@ In your Render service dashboard:
    - Map inputs:
      - `userQuery`: Input from user or previous action result
      - `conversation`: Use a variable to track conversation state
+   - The Basic Auth header is automatically handled by Salesforce using the Named Credential
 
 #### 9.4 Example Agent Topic Configuration
 
@@ -1116,34 +1135,91 @@ Actions:
 1. Ask Me Action:
    - Input: userQuery = "{user message}"
    - Input: conversation = "{stored conversation variable}"
-   - Store conversation output in a variable for future turns
+   - Basic Auth credentials come from the Named Credential "MobiusAskMe"
+   - Store result in a variable for future turns
    
 2. Send Response:
    - Output: "Answer from Mobius: {ask me action result.answer}"
+   - Update conversation variable: "{ask me action result.context.conversation}"
 ```
 
-### 9.5 Troubleshooting AskMe
+#### 9.5 How Basic Auth Works with Salesforce
+
+1. **Named Credential** holds the base URL only (no credentials needed)
+2. **Each request to `/askme`** includes:
+   - Authorization header with the logged-in user's Mobius credentials
+   - Request body with userQuery and conversation
+3. **Your MCP server** extracts the credentials from the Authorization header and passes them to Mobius
+4. **Mobius authenticates** the user with their provided credentials
+
+This allows Salesforce to send each user's own credentials without storing them in environment variables.
+
+#### 9.6 Passing Credentials from Salesforce
+
+To send each user's Mobius credentials:
+
+1. **Store credentials in Salesforce:**
+   - Create custom contact/user fields:
+     - `Mobius_Username__c` (text field)
+     - `Mobius_Password__c` (encrypted field - recommended)
+
+2. **In Agent Builder, map the Named Credential:**
+   - Select the `MobiusAskMe` Named Credential
+   - Override Authentication if needed (though typically not required for proxy pattern)
+   - Alternatively, create a custom integration that builds the Authorization header
+
+3. **If using a custom action:**
+   ```apex
+   // In Apex or Flow, construct the Authorization header:
+   String credentials = username + ':' + password;
+   String encoded = EncodingUtil.base64Encode(Blob.valueOf(credentials));
+   String authHeader = 'Basic ' + encoded;
+   
+   // Then pass this in the HTTP request to /askme
+   ```
+
+#### 9.7 Security Considerations
+
+- ✅ **Good**: Credentials are passed per-request, not stored in environment variables
+- ✅ **Good**: Use HTTPS for all communications
+- ✅ **Good**: Store passwords in Salesforce encrypted fields
+- ✅ **Good**: Use field-level security to restrict access
+- ⚠️ **Warning**: Ensure the connection between Salesforce and your MCP server is over HTTPS
+- ⚠️ **Warning**: Consider using temporary tokens instead of passwords if Mobius supports them
 
 **Issue: "Missing required environment variables"**
 - Verify all 5 MOBIUS_* environment variables are set in Render/AWS
 - Restart/redeploy the service after adding variables
 - Check that variable names are exactly as listed (case-sensitive)
 
+**Issue: "Missing Authorization header"** (401)
+- The `/askme` request must include an Authorization header with Basic Auth
+- Verify the Named Credential is properly configured in Salesforce
+- Ensure Salesforce is sending the Authorization header in the External Service action
+
+**Issue: "Invalid Authorization header format"** (401)
+- The Authorization header must be in format: `Basic base64(username:password)`
+- Verify credentials are properly base64 encoded
+- Check that username and password don't contain special characters that need escaping
+
 **Issue: "Failed to connect to Mobius service"**
 - Verify `MOBIUS_SERVER` and `MOBIUS_PORT` are correct
 - Check network connectivity from your deployment environment to Mobius server
 - Ensure Mobius service is running and accessible
 - Verify SSL certificate is valid (if using HTTPS)
+- Check that the credentials passed have permission to access Mobius
 
-**Issue: "Request timed out"**
+**Issue: "Request timed out"** (504)
 - Increase timeout handling in your topic logic
 - Check Mobius service response time
 - Verify network latency
+- Check Mobius service is not overloaded
 
 **Issue: "Invalid response from Mobius service"**
 - Verify the response format matches expected JSON structure
 - Check that Mobius service returns `answer` and `context.conversation` fields
 - Review server logs for parsing errors
+- Ensure the Mobius service endpoint is correct
 
 ## Step 10: Next Steps and Enhancements
 

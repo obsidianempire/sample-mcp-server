@@ -33,18 +33,38 @@ The `/askme` endpoint requires the following environment variables to be set:
 |----------|-------------|---------|
 | `MOBIUS_SERVER` | Mobius service hostname | `mobius.example.com` |
 | `MOBIUS_PORT` | Mobius service port | `8443` |
-| `MOBIUS_USERNAME` | Username for Mobius authentication | `user@example.com` |
-| `MOBIUS_PASSWORD` | Password for Mobius authentication | `secure_password` |
 | `MOBIUS_REPOSITORY_ID` | Repository ID to use for Mobius requests | `repo_123` |
+| `MOBIUS_CERT_CONTENT` | (Optional) SSL certificate for self-signed certs | Certificate PEM content |
+| `MOBIUS_CERT_PATH` | (Optional) Path to SSL certificate file | `/app/certs/mobius-cert.pem` |
 
 ### AskMe Request Format
 
-```json
+The `/askme` endpoint uses **HTTP Basic Authentication** to pass credentials to the Mobius service.
+
+```http
 POST /askme
+Authorization: Basic base64(username:password)
+Content-Type: application/json
+
 {
   "userQuery": "What is the policy coverage?",
   "conversation": "optional_conversation_data_here"
 }
+```
+
+**Example with curl:**
+
+```bash
+# Base64 encode credentials: username:password
+# For example, "admin:password123" encodes to "YWRtaW46cGFzc3dvcmQxMjM="
+
+curl -X POST https://your-app.onrender.com/askme \
+  -H "Authorization: Basic YWRtaW46cGFzc3dvcmQxMjM=" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "userQuery": "What is the policy coverage?",
+    "conversation": ""
+  }'
 ```
 
 ### AskMe Response Format
