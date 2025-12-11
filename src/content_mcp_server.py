@@ -44,7 +44,7 @@ class AskMeRequest(BaseModel):
 
 class AskMeResponse(BaseModel):
     answer: str
-    context: Dict[str, Any]
+    conversationContext: str  # Flattened from nested context.conversation
 
 # Determine desired runtime mode (HTTP/REST or MCP)
 _mode_env = os.getenv("MCP_SERVER_MODE")
@@ -58,7 +58,7 @@ else:
 # Check if running in HTTP mode for Salesforce integration
 if _runtime_mode in {"http", "rest"}:
     # HTTP mode for cloud deployment
-    from fastapi import FastAPI, HTTPException, Request
+    from fastapi import FastAPI, HTTPException, Request, Header
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import HTMLResponse
     import uvicorn
@@ -175,25 +175,33 @@ if _runtime_mode in {"http", "rest"}:
 
     # AskMe API endpoint for external service integration
     @app.post("/askme", response_model=AskMeResponse)
-    def ask_me(req: AskMeRequest, request: Request):
+    def ask_me(
+        req: AskMeRequest,
+        authorization: str = Header(None, description="Basic Auth header with Mobius credentials")
+    ):
         """
         Proxy endpoint that forwards questions to an external Mobius service.
         
-        Request requires:
-        - Authorization header with Basic Auth (username:password)
-        - Body with userQuery and optional conversation
+        Requires HTTP Basic Authentication with Mobius credentials.
+        
+        Request body:
+        - userQuery: The question to ask
+        - conversation: Optional conversation history
+        
+        Headers:
+        - Authorization: Basic Auth header with Mobius credentials (Basic base64(username:password))
         
         Environment variables required:
         - MOBIUS_SERVER: The Mobius server hostname
         - MOBIUS_PORT: The Mobius server port
         - MOBIUS_REPOSITORY_ID: Repository ID for Mobius service
-        - MOBIUS_CERT_CONTENT: (Optional) SSL certificate content as a string (for self-signed certs)
+        - MOBIUS_CERT_CONTENT: (Optional) SSL certificate content as a string
         - MOBIUS_CERT_PATH: (Optional) Path to SSL certificate file
         """
         import tempfile
         
-        # Extract credentials from Authorization header
-        auth_header = request.headers.get("Authorization")
+        # Get authorization from header parameter
+        auth_header = authorization
         if not auth_header:
             raise HTTPException(
                 status_code=401,
@@ -304,12 +312,10 @@ if _runtime_mode in {"http", "rest"}:
                 answer = mobius_response.get("answer", "")
                 conversation_data = mobius_response.get("context", {}).get("conversation", "")
                 
-                # Return in the expected format
+                # Return in the expected format (flat structure for Agentforce compatibility)
                 return AskMeResponse(
                     answer=answer,
-                    context={
-                        "conversation": conversation_data
-                    }
+                    conversationContext=conversation_data
                 )
                 
             except requests.exceptions.Timeout:

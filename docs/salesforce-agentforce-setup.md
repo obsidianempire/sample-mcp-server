@@ -1221,21 +1221,705 @@ To send each user's Mobius credentials:
 - Review server logs for parsing errors
 - Ensure the Mobius service endpoint is correct
 
-## Step 10: Next Steps and Enhancements
+## Step 10: Creating an Agent that Routes Financial Queries to AskMe
 
-### 10.1 Immediate Improvements
+This step shows how to create a Salesforce AgentForce agent that routes banking-related questions to the `/askme` endpoint while maintaining conversation context.
+
+### 10.1 Overview
+
+The agent will:
+1. Listen for user questions
+2. Determine if the question is about banking statements, financial records, or loans
+3. Forward qualifying questions to the `/askme` endpoint (unchanged)
+4. Display the answer from Mobius to the user
+5. Store the conversation context for the next user message
+6. Reuse the stored context on subsequent requests
+
+### 10.2 Step-by-Step Setup
+
+#### Step 10.2.1: Create or Verify External Service for AskMe
+
+First, ensure you have the `AskMeService` External Service configured (from Step 9). If you haven't already created it:
+
+```
+Setup → Integrations → External Services → New External Service
+```
+
+- **Service Name**: `AskMeService`
+- **Service Schema Source**: **Manual Schema**
+- **Named Credential**: Create a new one if needed:
+  - Label: `MobiusAskMeCredential`
+  - URL: `https://your-app.onrender.com`
+  - Authentication Protocol: **No Authentication**
+
+#### Step 10.2.2: Create a Custom Object to Store Conversation Context
+
+Create a custom object to persist conversation state between user interactions:
+
+```
+Setup → Object Manager → Create → Custom Object
+```
+
+**Custom Object Details:**
+- **Label**: `Agent Conversation Context`
+- **Plural Label**: `Agent Conversation Contexts`
+- **Object Name**: `Agent_Conversation_Context`
+- **Record Name Field**: `Name` (auto-created)
+
+**Add Custom Fields:**
+1. **Conversation Data** (Long Text Area)
+   - Field Label: `Conversation_Data`
+   - Length: 32000
+   
+2. **User** (Lookup to User)
+   - Field Label: `User`
+   - Lookup Object: `User`
+   - Allow lookup record to be deleted: Unchecked
+
+3. **Last Updated** (Date/Time)
+   - Field Label: `Last_Updated`
+   - Auto-populate with current date and time
+
+**Add a Custom List View:**
+- Create a filter to show records for the current user
+- This helps during testing
+
+#### Step 10.2.3: Create an Agent in Agent Builder
+
+**How to Access Agentforce Builder:**
+
+1. Go to **Setup** (click gear icon) → Search for "Agentforce Agents"
+2. Click on **Agentforce Agents** in the search results
+3. Click the **New Agent** button (blue button at top right)
+4. This opens **Agentforce Builder** (the tool where you'll create and configure the agent)
+
+**Understanding the Agentforce Builder Interface:**
+
+Once inside Agentforce Builder, you'll see a left sidebar with these tabs:
+- **Topics** (hashtag icon) - Where you create topics that handle user intents
+- **Data** (book icon - currently selected in your view) - Where you set up agent variables
+- **Connections** - External services and API calls
+- **Context** - Agent context settings
+- **Language** - Localization settings
+- **Events** - Logging and monitoring
+
+**Note:** "Agentforce Builder" and "Agent Builder" refer to the same interface.
+
+Navigate to:
+```
+Setup → Agentforce Agents → New Agent
+```
+
+**Agent Configuration:**
+- **Name**: `Financial Query Agent` (or similar)
+
+**Description** (Describe the agent's job in more detail - up to 929 characters):
+```
+Handles questions about banking statements, financial records, loans, and other financial matters. Routes complex queries to the Mobius knowledge base for detailed analysis and maintains conversation context for follow-up questions.
+```
+
+**Role** (Job description - what role it plays in your company - up to 184 characters):
+
+Use this format starting with "You are...":
+
+```
+You are a financial services assistant supporting customers and internal staff with banking inquiries, loan information, and account documentation.
+```
+
+Or customize to your company:
+```
+You are a Financial Advisor helping users understand their banking statements, loan options, and account services.
+```
+
+**Company** (Tell the agent about your company - up to 85 characters):
+
+Replace with YOUR company information:
+
+```
+Rocket Software, Inc. The company maintains content in a content repository. Using Askme allows the user to ask questions about content that they have permissions to ask.
+```
+
+Or example for a bank:
+```
+ABC Bank provides comprehensive financial services including checking, savings, loans, and investment products to customers nationwide.
+```
+
+**Optional Instructions** (in Agent Builder, look for "Instructions" or "System Prompt"):
+```
+You are a financial knowledge assistant. When users ask about banking statements, financial records, loans, or related financial topics, you provide accurate, helpful information from the Mobius knowledge base. Always maintain context from previous messages in the conversation to provide coherent, consistent responses across multiple user interactions.
+```
+
+**Enhanced Event Logs** (Optional):
+- Check "Keep a record of conversations with enhanced event logs to review agent behavior" if you want detailed logging of agent interactions
+
+#### Step 10.2.4: Set Up Agent Variables
+
+**Note:** In Agentforce Builder, variables may be created implicitly when you configure actions, or they may be in a different location than shown in older documentation. 
+
+For now, proceed with creating your topic and actions. You can reference variable names like `{user_question}`, `{conversation_context}`, `{mobius_answer}`, and `{ask_me_response}` in your action mappings, and they will be created as needed.
+
+**Skip this step for now** - you'll reference these variables when configuring actions in the topic.
+
+#### Step 10.2.5: Create a Topic for Financial Queries
+
+**How to Access Topics:**
+
+1. In Agentforce Builder, click the **Topics** tab (hashtag icon # on the left sidebar)
+2. Click **New Topic** (or **+** button to create a new topic)
+
+**Configure the Topic:**
+
+1. **Name**
+   - Value: `Financial Query Handler`
+   - This is the display name for the topic in Agent Builder
+
+2. **API Name**
+   - Value: `Financial_Query_Handler`
+   - Auto-generated from Name, but you can customize it
+   - Used in code/API calls
+   - Use underscores, no spaces
+
+3. **Classification**
+   - Value: `Financial Services`
+   - Describes what category this topic falls under
+   - Other examples: `Banking`, `Loan Inquiry`, `Account Services`
+
+4. **Description**
+   - Value: `Handles user questions about banking statements, financial records, loans, and account information. Routes inquiries to the Mobius service for detailed analysis and maintains conversation context for follow-up questions.`
+   - Explains the purpose of the topic
+   - Helps other admins understand what this topic does
+
+5. **Scope** (Choose one)
+   - Value: `Agent-specific` (recommended)
+   - Other options: `Global` (shared across agents)
+   - Use Agent-specific if this topic is only for this agent
+   - Use Global if multiple agents need this topic
+
+6. **Instructions** (Multiple instructions can be provided)
+
+   **Instruction 1: Primary Role Definition**
+   ```
+   You are a financial services assistant. Your primary responsibility is to help users 
+   with questions about:
+   - Banking statements and transaction history
+   - Financial records and account information
+   - Loans and loan-related inquiries
+   - Account balances and financial summaries
+   
+   When a user asks about these topics, you will extract their exact question and 
+   forward it to the Mobius service for comprehensive analysis and answers.
+   ```
+
+   **Instruction 2: Conversation Management**
+   ```
+   Maintain conversation context across multiple user messages:
+   - On the first user message, conversation context will be empty
+   - After each response from Mobius, a conversation context will be provided
+   - Use the stored conversation context when the user asks follow-up questions
+   - This allows you to understand references like "that", "those", "the previous one", etc.
+   
+   Example: If user asks "What was my balance in July?" and then asks "Can you break 
+   that down by week?", the conversation context helps understand "that" refers to 
+   the July balance.
+   ```
+
+   **Instruction 3: Question Handling**
+   ```
+   For all financial questions received:
+   - Extract the user's question exactly as asked (don't rephrase)
+   - Include any relevant context the user provides (dates, account types, etc.)
+   - Pass the question to the AskMe action
+   - Wait for the response from Mobius
+   - Present the answer to the user in a clear, professional manner
+   - Do NOT modify, summarize, or interpret the Mobius response - present it as-is
+   ```
+
+   **Instruction 4: Error Handling**
+   ```
+   If the AskMe service fails:
+   - Do NOT retry automatically
+   - Inform the user: "I'm unable to process your financial inquiry at this time. 
+     Please try again in a moment or contact support."
+   - Do NOT attempt to answer the question yourself
+   - Do NOT provide generic financial advice
+   ```
+
+**Topic Trigger Conditions:**
+
+The agent will automatically trigger this topic when the user mentions:
+- "banking"
+- "statement" or "statements"
+- "financial"
+- "loan"
+- "balance"
+- "transaction" or "transactions"
+- "account"
+- "deposit"
+- "withdrawal"
+- "credit"
+- "debit"
+
+You can add more trigger keywords as needed based on your use cases.
+
+#### Step 10.2.6: Add Actions to the Topic
+
+Click **Add Action** and configure the following sequence:
+
+**Action 1: Get Current Conversation Context**
+
+This retrieves stored context for the current user. Since this is the first action with no previous action to reference, use **Apex** instead of Flow.
+
+- **Action Type**: **Apex**
+- **Reference Action Category**: **Apex Invocable Actions** (NOT "Apex REST (Beta)")
+- **Purpose**: Load the `Agent_Conversation_Context` record for the current user
+- **Output**: Store in `conversation_context` variable
+
+**Agent Builder Configuration for this Action:**
+
+1. **Agent Action Instructions** (What the agent should understand about this action):
+   ```
+   Retrieve the stored conversation context for the current user. This loads any previous conversation history so that follow-up questions can reference earlier messages.
+   ```
+
+2. **Loading Text** (Message shown while the action runs):
+   ```
+   Loading conversation history...
+   ```
+
+3. **Input Mapping Instructions** (How to configure inputs):
+   - This Apex action has no required inputs
+   - Leave all input fields empty or unmapped
+
+4. **Output Mapping Instructions** (How to use the returned value):
+   - **Output Variable Name**: Select or create `conversation_context`
+   - **Output Data Type**: Text (Large Text Area)
+   - **Mapping**: Map the returned context string to the `conversation_context` variable
+   - This variable will contain the previous conversation data (or empty string if no prior context exists)
+
+**Apex Implementation:**
+
+Create this Apex class in your org (deploy via Developer Console or Salesforce CLI):
+
+```apex
+public class GetConversationContext {
+    @InvocableMethod(label='Get User Conversation Context' description='Retrieves stored conversation context for the current user')
+    public static List<String> getContext(List<GetContextRequest> requests) {
+        List<String> results = new List<String>();
+        String userId = UserInfo.getUserId();
+        
+        try {
+            // Query the custom object - adjust the name to match YOUR org's custom object
+            List<SObject> contexts = Database.query(
+                'SELECT Conversation_Data__c FROM Agent_Conversation_Context__c WHERE User__c = \'' + userId + '\' LIMIT 1'
+            );
+            
+            if (contexts.size() > 0) {
+                Object contextData = contexts[0].get('Conversation_Data__c');
+                results.add(contextData != null ? (String)contextData : '');
+            } else {
+                results.add('');
+            }
+        } catch (Exception e) {
+            // If object doesn't exist or query fails, return empty context
+            System.debug('Error retrieving conversation context: ' + e.getMessage());
+            results.add('');
+        }
+        
+        return results;
+    }
+    
+    public class GetContextRequest {
+        @InvocableVariable(label='Unused' required=false)
+        public String unused;
+    }
+}
+```
+
+**Important:** If your custom object has a different name than `Agent_Conversation_Context__c`, change line 10 to match. For example:
+- If you named it `Conversation_Context__c`: Change to `FROM Conversation_Context__c`
+- If you named it `Agent_Context__c`: Change to `FROM Agent_Context__c`
+
+Check your custom object's **API Name** in Setup > Custom Objects and use the exact API name in the query.
+
+Then in Agent Builder:
+- Select this Apex action
+---
+
+**Action 2: Call AskMe Service**
+
+Now that you have context from Action 1, invoke the `/askme` endpoint:
+
+- **Action Type**: **API** (or Apex wrapper if you get schema errors)
+- **Service**: `AskMeService`
+- **Operation**: `askMe`
+- **Input Mapping**:
+  - `userQuery`: `{user_question}` (the user's exact question)
+  - `conversation`: `{conversation_context}` (context from previous requests, populated by Action 1)
+- **Output Mapping**:
+  - `answer`: Map to `mobius_answer` variable
+  - `context`: This may cause schema errors - see troubleshooting below
+- **Error Handling**: If fails, respond: "I'm unable to process that request right now. Please try again."
+
+**Agent Builder Configuration for this Action:**
+
+1. **Agent Action Instructions**:
+   ```
+   Call the Mobius AskMe service with the user's question and conversation context. The service will analyze the question and return a detailed answer based on the knowledge base.
+   ```
+
+2. **Loading Text**:
+   ```
+   Searching knowledge base for your answer...
+   ```
+
+3. **Input Mapping Instructions**:
+   - **userQuery** → Map to `{user_question}` variable
+   - **conversation** → Map to `{conversation_context}` variable (from Action 1 output)
+
+4. **Output Mapping Instructions**:
+   - **answer** → Map to `mobius_answer` variable (this is what gets shown to the user)
+
+**Troubleshooting - Schema Error with JSON Objects:**
+
+If you get an error like "This Apex class isn't supported. Select a different one", the issue is that the OpenAPI schema has complex JSON object types that Agentforce can't handle directly.
+
+**Solution:** Create a wrapper Apex class to simplify the response:
+
+```apex
+public class AskMeWrapper {
+    @InvocableMethod(label='Call AskMe Service' description='Calls the Mobius AskMe endpoint and handles complex JSON response')
+    public static List<AskMeResponse> callAskMe(List<AskMeRequest> requests) {
+        List<AskMeResponse> responses = new List<AskMeResponse>();
+        
+        for (AskMeRequest req : requests) {
+            AskMeResponse resp = new AskMeResponse();
+            
+            try {
+                // Build the request
+                HttpRequest httpReq = new HttpRequest();
+                httpReq.setEndpoint('https://your-render-app.onrender.com/askme');
+                httpReq.setMethod('POST');
+                httpReq.setHeader('Content-Type', 'application/json');
+                
+                // Add Basic Auth header
+                String auth = req.username + ':' + req.password;
+                String encodedAuth = EncodingUtil.base64Encode(Blob.valueOf(auth));
+                httpReq.setHeader('Authorization', 'Basic ' + encodedAuth);
+                
+                // Build request body
+                String body = JSON.serialize(new Map<String, String>{
+                    'userQuery' => req.userQuery,
+                    'conversation' => req.conversation != null ? req.conversation : ''
+                });
+                httpReq.setBody(body);
+                httpReq.setTimeout(30000);
+                
+                // Make the call
+                Http http = new Http();
+                HttpResponse httpResp = http.send(httpReq);
+                
+                // Parse response
+                if (httpResp.getStatusCode() == 200) {
+                    Map<String, Object> respMap = (Map<String, Object>) JSON.deserializeUntyped(httpResp.getBody());
+                    resp.answer = (String) respMap.get('answer');
+                    
+                    // Extract conversation context from nested structure
+                    if (respMap.containsKey('context')) {
+                        Map<String, Object> contextMap = (Map<String, Object>) respMap.get('context');
+                        if (contextMap.containsKey('conversation')) {
+                            resp.conversationContext = (String) contextMap.get('conversation');
+                        }
+                    }
+                    resp.success = true;
+                } else {
+                    resp.answer = 'Service error: ' + httpResp.getStatusCode();
+                    resp.success = false;
+                }
+            } catch (Exception e) {
+                resp.answer = 'Error calling AskMe service: ' + e.getMessage();
+                resp.success = false;
+            }
+            
+            responses.add(resp);
+        }
+        
+        return responses;
+    }
+    
+    public class AskMeRequest {
+        @InvocableVariable(label='User Question' required=true)
+        public String userQuery;
+        
+        @InvocableVariable(label='Conversation Context' required=false)
+        public String conversation;
+        
+        @InvocableVariable(label='Username' required=true)
+        public String username;
+        
+        @InvocableVariable(label='Password' required=true)
+        public String password;
+    }
+    
+    public class AskMeResponse {
+        @InvocableVariable(label='Answer')
+        public String answer;
+        
+        @InvocableVariable(label='Conversation Context')
+        public String conversationContext;
+        
+        @InvocableVariable(label='Success')
+        public Boolean success;
+    }
+}
+```
+
+Then use this Apex action instead of the API action if you encounter schema errors.
+
+**Action 3: Update Conversation Context**
+
+Store the conversation context for the next request. Now that you have a Reference Action (Action 2), you can use Flow:
+
+- **Action Type**: **Flow**
+- **Reference Action**: Select Action 2 (the AskMe API call)
+- **Purpose**: Save returned conversation data to the custom object
+
+**Agent Builder Configuration for this Action:**
+
+1. **Agent Action Instructions**:
+   ```
+   Update the user's conversation context record with the response from the Mobius service. This ensures follow-up questions will have the full conversation history.
+   ```
+
+2. **Loading Text**:
+   ```
+   Saving conversation for next request...
+   ```
+
+3. **Input Mapping Instructions**:
+   - Map the output from Action 2 (ask_me_response) to the Flow
+   - The Flow will extract the conversation data and save it
+
+4. **Output Mapping Instructions**:
+   - This action typically doesn't return output
+   - But you can map any success/error messages if your Flow produces them
+
+**Flow Implementation** (Create a Flow with these steps):
+
+Flow Type: **Autolaunched Flow** (no triggers)
+
+```
+Step 1 - Decision: Check if context record exists
+  Decision Name: Check_Context_Exists
+  Condition: 
+    - Resource: Agent_Conversation_Context__c
+    - Filter: WHERE User__c = {$User.Id}
+    - If found, take TRUE path; if not found, take FALSE path
+
+Step 2a (TRUE path) - Update existing record:
+  Action: Update Record
+  Object: Agent_Conversation_Context__c
+  Filter: User__c = {$User.Id}
+  Fields to Update:
+    - Conversation_Data__c = [map the conversation data from Action 2 response]
+    - Last_Updated__c = {$Flow.CurrentDateTime}
+
+Step 2b (FALSE path) - Create new record:
+  Action: Create Record
+  Object: Agent_Conversation_Context__c
+  Field Values:
+    - User__c = {$User.Id}
+    - Conversation_Data__c = [map the conversation data from Action 2 response]
+    - Last_Updated__c = {$Flow.CurrentDateTime}
+```
+
+---
+
+**Action 4: Send Response to User**
+
+Display the answer. Use **Prompt Template** for a polished response:
+
+- **Action Type**: **Prompt Template** (recommended for better formatting)
+- **Purpose**: Format and display the answer to the user
+
+**Agent Builder Configuration for this Action:**
+
+1. **Agent Action Instructions**:
+   ```
+   Display the answer from the Mobius service to the user in a clear, professional format.
+   ```
+
+2. **Loading Text**:
+   ```
+   Preparing response...
+   ```
+
+3. **Input Mapping Instructions**:
+   - **user_question** → Map to `{user_question}` variable
+   - **mobius_answer** → Map to `{mobius_answer}` variable (from Action 2)
+
+4. **Output Mapping Instructions**:
+   - This action displays to the user; no variable mapping needed
+
+**Prompt Template Configuration**:
+```
+You are responding to a user's financial question.
+The user asked: {user_question}
+The Mobius service provided this answer:
+
+{mobius_answer}
+
+Present this answer clearly and professionally to the user.
+Do not modify or add to the answer - present it as provided.
+```
+
+Or use a simpler version without Prompt Template:
+```
+{mobius_answer}
+```
+
+---- **Or use a simple API response if Prompt Template is not available**:
+  - Just display: `{mobius_answer}`
+
+### 10.3 Complete Topic Flow Diagram
+
+```
+User asks question
+        ↓
+Agent analyzes question (is it about banking/finance?)
+        ↓
+   YES → Trigger "Financial Query Handler" topic
+        ↓
+   Action 1: Get stored conversation context
+        ↓
+   Action 2: Call /askme with user question + context
+        ↓
+   Action 3: Store returned conversation context
+        ↓
+   Action 4: Display answer to user
+        ↓
+User sees response and can ask follow-up question
+        ↓
+On next question, conversation context is retrieved (Action 1) and used again
+```
+
+### 10.4 Example User Conversation
+
+```
+User: "What was my account balance last month?"
+
+Agent Flow:
+1. Recognizes "account balance" as financial query
+2. Loads conversation context (empty on first call)
+3. Calls AskMe: userQuery="What was my account balance last month?" 
+               conversation=""
+4. Receives: { "answer": "Your balance on last month...", 
+              "context": { "conversation": "user_asked_about_balance..." }}
+5. Stores context for future use
+6. Shows: "Your balance on last month was..."
+
+---
+
+User: "Can you break that down by month?"
+
+Agent Flow:
+1. Recognizes "break down" + financial context
+2. Loads stored conversation context: "user_asked_about_balance..."
+3. Calls AskMe: userQuery="Can you break that down by month?"
+               conversation="user_asked_about_balance..."
+4. Mobius uses context to understand "that" refers to previous balance
+5. Receives: { "answer": "Month by month breakdown...", 
+              "context": { "conversation": "previous_context + new_data..." }}
+6. Updates stored context
+7. Shows: "Month by month breakdown is..."
+```
+
+### 10.5 Implementation Tips
+
+**Maintaining Context Across Sessions:**
+- The `Agent_Conversation_Context` object stores context at the user level
+- Each user's context is separate and secure
+- Conversation context is a string (JSON-formatted) from Mobius
+- Don't need to parse it - just pass it back on the next request
+
+**Error Handling:**
+- If `/askme` fails, catch the error and notify user
+- Don't update context if the request failed
+- Optionally log failures to a custom object for debugging
+
+**Testing the Agent:**
+1. Open Agent in Preview mode
+2. Ask a banking-related question: "What's my account balance?"
+3. Verify the answer appears correctly
+4. Ask a follow-up: "Show me the past 3 months"
+5. Check that context is properly used in the follow-up
+
+**Conversation Context Cleanup:**
+- Add a scheduled flow or batch process to delete old context records
+- Suggested: Delete records not updated in the last 30 days
+- Or clear context when user closes conversation
+
+### 10.6 Security Considerations
+
+- ✅ Store conversation context in Salesforce (encrypted at rest)
+- ✅ Use field-level security to restrict who can view context
+- ✅ Ensure Mobius credentials are sent via Basic Auth (not stored)
+- ✅ Log all requests to `/askme` for audit compliance
+- ✅ Clear conversation context on logout or after timeout
+- ⚠️ **Important**: Ensure user can only see their own conversation context
+- ⚠️ **Important**: Validate that Mobius respects user permissions when returning data
+
+### 10.7 Advanced: Using Apex for Complex Context Management
+
+If you need more sophisticated context handling, create a custom Apex action:
+
+```apex
+public class AskMeContextManager {
+    public static Map<String, Object> manageContext(String userId, String newContext) {
+        // Get existing context
+        Agent_Conversation_Context__c contextRecord = [
+            SELECT Conversation_Data__c 
+            FROM Agent_Conversation_Context__c 
+            WHERE User__c = :userId 
+            LIMIT 1
+        ];
+        
+        // Update or create
+        if (contextRecord != null) {
+            contextRecord.Conversation_Data__c = newContext;
+            contextRecord.Last_Updated__c = DateTime.now();
+            update contextRecord;
+        } else {
+            contextRecord = new Agent_Conversation_Context__c(
+                User__c = userId,
+                Conversation_Data__c = newContext,
+                Last_Updated__c = DateTime.now()
+            );
+            insert contextRecord;
+        }
+        
+        return new Map<String, Object>{
+            'success' => true,
+            'contextId' => contextRecord.Id
+        };
+    }
+}
+```
+
+## Step 11: Next Steps and Enhancements
+
+### 11.1 Immediate Improvements
 1. **Add more banking data** to make demos more realistic
 2. **Implement proper error handling** in your MCP server
 3. **Add logging** to track usage and debug issues
 4. **Create user documentation** for end users
 
-### 10.2 Advanced Features
+### 11.2 Advanced Features
 1. **Multi-language support** for international customers
 2. **Voice integration** for hands-free banking assistance
 3. **Transaction processing** for actually modifying services
 4. **Integration with core banking systems** for real-time data
 
-### 10.3 Enterprise Integration
+### 11.3 Enterprise Integration
 1. **SSO integration** for secure user authentication
 2. **Audit logging** for compliance requirements
 3. **Role-based access control** for different user types
